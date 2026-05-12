@@ -9,3 +9,5 @@
 /auxiliary_asr_burmese/__pycache__/
 /codes/__pycache__/
 /styletts2/__pycache__/
+*.pth
+*.pyc
