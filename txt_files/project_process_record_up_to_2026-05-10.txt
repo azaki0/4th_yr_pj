@@ -802,3 +802,625 @@ Current status after this update:
 - StyleTTS2 first-stage training: starts locally and reaches the training loop.
 - Local issue fixed: batch_size needed to be greater than 1.
 - Next major task: package/upload the working StyleTTS2 setup and Burmese aligner assets to Kaggle for longer training.
+
+
+============================================================
+26. Update - 2026-05-12 Kaggle Training Migration Chat
+============================================================
+
+Source chat:
+- Codex chat name: Plan Kaggle training migration
+- Session id: 019e1550-5eab-75a2-94b4-ffe2272ae54b
+- Session file:
+  - C:\Users\Kyouk\.codex\sessions\2026\05\11\rollout-2026-05-11T11-04-09-019e1550-5eab-75a2-94b4-ffe2272ae54b.jsonl
+
+Goal of this chat:
+- Move the already-working local StyleTTS2 Burmese training setup to Kaggle.
+- Decide which GPU to use.
+- Run stage-one training.
+- Clean and export the result.
+- Start stage-two training and debug its failures.
+
+Initial migration guidance:
+- Main folder to move:
+  - D:\codes\projects\schpj\4thyr\styletts2
+
+Important content expected inside that folder:
+- Config:
+  - styletts2\Configs\config_burmese.yml
+- Dataset:
+  - styletts2\Data\my_mm_female\train_list.txt
+  - styletts2\Data\my_mm_female\val_list.txt
+  - styletts2\Data\my_mm_female\wavs\
+- Prep/reference files:
+  - styletts2\Data\my_mm_female_prep\
+- OOD text:
+  - styletts2\Data\OOD_texts.txt
+  - styletts2\Data\OOD_texts_burmese.txt
+- Burmese ASR aligner files copied into StyleTTS2:
+  - styletts2\Utils\ASR\config_burmese_asr.yml
+  - styletts2\Utils\ASR\epoch_burmese_00200.pth
+- Patched source files:
+  - styletts2\text_utils.py
+  - styletts2\meldataset.py
+  - styletts2\utils.py
+- Helper scripts:
+  - styletts2\custom_tools\
+- Training scripts:
+  - styletts2\train_first.py
+  - styletts2\train_second.py
+
+Local checks performed in the chat:
+- Read the existing project process record:
+  - D:\codes\projects\schpj\4thyr\txt_files\project_process_record_up_to_2026-05-10.txt
+- Read the Burmese config:
+  - D:\codes\projects\schpj\4thyr\styletts2\Configs\config_burmese.yml
+- Checked the Burmese ASR checkpoint folder:
+  - D:\codes\projects\schpj\4thyr\auxiliary_asr_burmese\Checkpoint\burmese_asr
+- Checked whether these files existed:
+  - D:\codes\projects\schpj\4thyr\styletts2\Utils\ASR\epoch_burmese_00200.pth
+  - D:\codes\projects\schpj\4thyr\styletts2\Utils\ASR\config_burmese_asr.yml
+- Checked model/checkpoint folders under:
+  - D:\codes\projects\schpj\4thyr\styletts2\Models
+
+
+============================================================
+27. Update - 2026-05-12 Kaggle GPU Choice
+============================================================
+
+Question:
+- Whether to use Kaggle GPU T4 x2 or P100.
+
+Initial recommendation:
+- Use P100 if available and compatible.
+
+Reason:
+- P100 usually gives 16 GB VRAM on a single GPU.
+- StyleTTS2 benefits more from larger single-GPU VRAM than from two GPUs that require multi-GPU setup.
+- T4 x2 does not automatically combine VRAM.
+- Multi-GPU can introduce accelerate/DDP/DataParallel issues.
+
+Actual decision:
+- P100 was not compatible/available for this setup.
+- User used T4 x2 on Kaggle.
+
+Observation from first Kaggle run:
+- Downloads were fast and successful:
+  - config.json downloaded.
+  - pytorch_model.bin downloaded: 378 MB.
+  - model.safetensors downloaded: 378 MB.
+- WavLM/model weights loaded successfully.
+- Training entered the loop.
+
+Early Kaggle stage-one output observed:
+- Epoch [1/50], Step [10/600], Mel Loss: 1.34384
+- Epoch [1/50], Step [20/600], Mel Loss: 0.80455
+- Epoch [1/50], Step [30/600], Mel Loss: 0.72304
+- Epoch [1/50], Step [40/600], Mel Loss: 0.71737
+
+Interpretation:
+- Kaggle run passed downloads, checkpoint loading, ASR loading, tokenizer setup, and entered training cleanly.
+- Zero losses for Gen/Disc/Mono/S2S/SLM were considered normal for this early stage because stage one mainly trains mel reconstruction.
+
+
+============================================================
+28. Update - 2026-05-12 T4 x2 Multi-GPU Attempt
+============================================================
+
+The user asked how to set up T4 x2.
+
+Suggested method:
+- Use accelerate multi-GPU configuration carefully.
+- Wait for a checkpoint first before stopping a working single-GPU run.
+
+Suggested checkpoint check command on Kaggle:
+- !ls -lh /kaggle/working/styletts2/Models/my_mm_female
+
+Suggested accelerate setup:
+- Run:
+  - !accelerate config
+
+Suggested answers:
+- Compute environment: This machine
+- Machine type: multi-GPU
+- Number of machines: 1
+- DeepSpeed: no
+- FSDP: no
+- Megatron-LM: no
+- Number of GPUs: 2
+- GPU IDs: all
+- Mixed precision: fp16 if available/stable
+
+Problem observed:
+- Multi-GPU run printed:
+  - find_unused_parameters=True was specified in DDP constructor, but did not find any unused parameters in the forward pass.
+
+Interpretation:
+- This was a DDP performance warning, not necessarily a crash.
+- It means PyTorch is doing extra unused-parameter graph traversal.
+- Advice was to wait 3-5 minutes and check GPU activity with:
+  - !nvidia-smi
+
+Practical recommendation after observing behavior:
+- Single-GPU training was already stable and fast enough.
+- Multi-GPU was not required for stage one.
+
+
+============================================================
+29. Update - 2026-05-12 Resume Stage-One Training
+============================================================
+
+Question:
+- How to resume training from a checkpoint.
+
+Finding from StyleTTS2 scripts:
+- Resume is controlled through the YAML config, mainly:
+  - pretrained_model
+  - load_only_params
+
+Resume method:
+- Set pretrained_model to the checkpoint path.
+- Set load_only_params: false
+
+Reason:
+- load_only_params: false restores model, optimizer, epoch, and step state when using a same-stage checkpoint.
+
+Example Kaggle checkpoint listing:
+- !ls -lh /kaggle/working/styletts2/Models/my_mm_female
+
+Example config patch for resuming from epoch 2:
+
+from pathlib import Path
+
+config_path = Path("/kaggle/working/styletts2/Configs/config_burmese.yml")
+text = config_path.read_text()
+
+text = text.replace(
+    'pretrained_model: ""',
+    'pretrained_model: "Models/my_mm_female/epoch_1st_00002.pth"'
+)
+
+text = text.replace(
+    "load_only_params: true",
+    "load_only_params: false"
+)
+
+config_path.write_text(text)
+
+============================================================
+30. Update - 2026-05-12 Stage-One Training Result
+============================================================
+
+Attached stage-one result log:
+- C:\Users\Kyouk\OneDrive\Desktop\train.log
+
+Log size:
+- 110388 bytes
+
+Training covered:
+- Stage one ran through epoch 50/50.
+- Logged epoch/step lines from:
+  - 2026-05-12 03:39:36
+  - through 2026-05-12 06:17:50
+
+Important note:
+- The log appears to include an early interruption/resume around epoch 3/4 because epoch 3 and part of epoch 4 appear twice.
+- The final continuous run still reached epoch 50/50.
+
+Number of parsed log entries:
+- Training loss entries parsed: 614
+- Validation loss entries parsed: 51
+
+First logged training line:
+- Epoch [1/50], Step [10/240]
+- Mel Loss: 1.25057
+- Gen Loss: 0.00000
+- Disc Loss: 0.00000
+- Mono Loss: 0.00000
+- S2S Loss: 0.00000
+- SLM Loss: 0.00000
+
+Final logged training line:
+- Epoch [50/50], Step [120/240]
+- Mel Loss: 0.32625
+- Gen Loss: 0.00000
+- Disc Loss: 0.00000
+- Mono Loss: 0.00000
+- S2S Loss: 0.00000
+- SLM Loss: 0.00000
+
+Best/lowest logged training mel loss:
+- Mel Loss: 0.30919
+- Location:
+  - Epoch [50/50], Step [50/240]
+  - Timestamp: 2026-05-12 06:16:06
+
+Highest logged training mel loss:
+- Mel Loss: 1.25057
+- Location:
+  - Epoch [1/50], Step [10/240]
+
+First validation loss:
+- Validation loss: 0.508
+- Timestamp:
+  - 2026-05-12 03:42:15
+
+Best/lowest validation loss:
+- Validation loss: 0.319
+- Timestamp:
+  - 2026-05-12 06:14:51
+- This was near the end of epoch 49.
+
+Final validation loss:
+- Validation loss: 0.332
+- Timestamp:
+  - 2026-05-12 06:17:50
+- This was the validation result after epoch 50.
+
+Loss trend:
+- Mel loss dropped from about 1.25 at the first logged step to about 0.33 at the end.
+- Validation loss dropped from 0.508 to a best of 0.319, ending at 0.332.
+- This indicates stage-one acoustic reconstruction learned successfully.
+
+Losses that stayed at zero in stage one:
+- Gen Loss: 0.00000
+- Disc Loss: 0.00000
+- Mono Loss: 0.00000
+- S2S Loss: 0.00000
+- SLM Loss: 0.00000
+
+Interpretation:
+- These zero values are expected for this stage/config because stage one is focused on mel reconstruction.
+- The meaningful stage-one numbers in this log are Mel Loss and Validation loss.
+
+Stage-one result:
+- Stage one completed.
+- Important output to keep:
+  - /kaggle/working/styletts2/Models/my_mm_female/first_stage.pth
+- User also wanted to keep:
+  - epoch_1st_00040.pth
+
+
+============================================================
+31. Update - 2026-05-12 Cleaning Stage-One Checkpoints
+============================================================
+
+Problem:
+- Zipping the model folder produced about an 8 GB archive.
+- Earlier checkpoints were not all needed.
+
+Initial advice:
+- Keep only:
+  - first_stage.pth
+  - config_burmese.yml
+  - train.log
+
+User wanted to keep one extra checkpoint:
+- epoch_1st_00040.pth
+
+Final keep set:
+- first_stage.pth
+- epoch_1st_00040.pth
+- config_burmese.yml
+- train.log
+
+Kaggle cleanup command:
+
+from pathlib import Path
+
+model_dir = Path("/kaggle/working/styletts2/Models/my_mm_female")
+
+keep = {
+    "epoch_1st_00040.pth",
+    "first_stage.pth",
+    "config_burmese.yml",
+    "train.log",
+}
+
+for p in model_dir.glob("epoch_1st_*.pth"):
+    if p.name not in keep:
+        print("Deleting", p.name)
+        p.unlink()
+    else:
+        print("Keeping", p.name)
+
+print("Done")
+
+Suggested zip command:
+
+import shutil
+
+shutil.make_archive(
+    "/kaggle/working/my_mm_female_first_stage_keep_0040",
+    "zip",
+    "/kaggle/working/styletts2/Models/my_mm_female"
+)
+
+
+============================================================
+32. Update - 2026-05-12 Kaggle Download / Export Issue
+============================================================
+
+Problem:
+- User tried downloading the zip from Kaggle but saw no download indicator.
+- Later user could not download it.
+
+Troubleshooting suggested:
+- Check browser downloads:
+  - Ctrl + J
+- Check Windows default download folder:
+  - C:\Users\Kyouk\Downloads
+- Check exact expected zip:
+  - C:\Users\Kyouk\Downloads\my_mm_female_first_stage_keep_0040.zip
+- Use Kaggle right-side file browser to download:
+  - /kaggle/working/my_mm_female_first_stage_keep_0040.zip
+
+For large file problems, suggested splitting:
+
+!split -b 1000M /kaggle/working/my_mm_female_first_stage_keep_0040.zip /kaggle/working/my_mm_female_part_
+!ls -lh /kaggle/working/my_mm_female_part_*
+
+Better workaround:
+- Save the model zip as a Kaggle Dataset instead of downloading directly.
+
+Suggested dataset export steps:
+
+!mkdir -p /kaggle/working/export_model
+!cp /kaggle/working/my_mm_female_first_stage_keep_0040.zip /kaggle/working/export_model/
+
+Create dataset metadata:
+
+import json
+from pathlib import Path
+
+dataset_dir = Path("/kaggle/working/export_model")
+
+metadata = {
+    "title": "my-mm-female-styletts2-first-stage",
+    "id": "azaki09/my-mm-female-styletts2-first-stage",
+    "licenses": [{"name": "CC0-1.0"}]
+}
+
+(dataset_dir / "dataset-metadata.json").write_text(json.dumps(metadata, indent=2))
+
+
+============================================================
+33. Update - 2026-05-12 Stage-Two Training Start
+============================================================
+
+Goal:
+- Continue to StyleTTS2 stage two after stage one finished.
+
+Expected stage-one checkpoint:
+- /kaggle/working/styletts2/Models/my_mm_female/first_stage.pth
+
+Expected config:
+- /kaggle/working/styletts2/Configs/config_burmese.yml
+
+Check commands:
+
+%cd /kaggle/working/styletts2
+
+!ls -lh Models/my_mm_female/first_stage.pth
+!ls -lh Configs/config_burmese.yml
+
+Suggested stage-two config settings:
+- pretrained_model: ""
+- first_stage_path: "first_stage.pth"
+- load_only_params: false
+- second_stage_load_pretrained: true
+
+Config patch method:
+
+from pathlib import Path
+
+config_path = Path("/kaggle/working/styletts2/Configs/config_burmese.yml")
+text = config_path.read_text()
+
+# Then replace/set the relevant YAML keys.
+
+config_path.write_text(text)
+
+
+============================================================
+34. Update - 2026-05-12 Stage-Two Bug 1 - CUDA Index Out Of Bounds
+============================================================
+
+Problem:
+- Stage two crashed with CUDA index out-of-bounds:
+  - vectorized_gather_kernel index out of bounds
+
+Initial context:
+- This happened during/after a T4 x2 multi-GPU attempt.
+
+Advice:
+- Restart Kaggle session after CUDA device-side assert because the GPU process becomes poisoned.
+- Debug on single GPU because multi-GPU hides the real Python line.
+
+Suggested debug command:
+
+%cd /kaggle/working/styletts2
+
+!CUDA_VISIBLE_DEVICES=0 CUDA_LAUNCH_BLOCKING=1 python train_second.py --config_path ./Configs/config_burmese.yml
+
+Reason:
+- CUDA_LAUNCH_BLOCKING=1 makes the traceback point closer to the real failing operation.
+
+
+============================================================
+35. Update - 2026-05-12 Stage-Two Bug 2 - PLBERT Vocab Size
+============================================================
+
+After single-GPU blocking debug, the traceback showed failure inside PLBERT:
+- train_second.py line 309:
+  - bert_dur = model.bert(texts, attention_mask=(~text_mask).int())
+
+Cause:
+- PLBERT vocab_size was 178.
+- Burmese tokenizer n_token was 199.
+- Stage two passed Burmese token IDs up to 198 into PLBERT.
+- PLBERT embedding only accepted IDs 0 through 177.
+
+Fix:
+- Patch PLBERT config to vocab_size: 199.
+
+Kaggle patch command:
+
+from pathlib import Path
+import re
+
+plbert_config = Path("/kaggle/working/styletts2/Utils/PLBERT/config.yml")
+text = plbert_config.read_text()
+text = re.sub(r"vocab_size:\s*\d+", "vocab_size: 199", text)
+plbert_config.write_text(text)
+print(plbert_config.read_text())
+
+Additional required method:
+- Patch the PLBERT loader so it can load the existing pretrained PLBERT weights while allowing the larger embedding table.
+- The old 178-token embedding weights need to be copied into the first 178 rows.
+- The extra Burmese token rows need to remain newly initialized.
+
+File involved:
+- /kaggle/working/styletts2/Utils/PLBERT/util.py
+
+Result:
+- The next traceback moved past the PLBERT vocab crash.
+- That means the PLBERT vocab-size fix worked.
+
+
+============================================================
+36. Update - 2026-05-12 Stage-Two Bug 3 - squeeze() Batch Shape
+============================================================
+
+Next stage-two crash:
+- It moved past PLBERT.
+- New failure happened around:
+  - train_second.py line 341
+  - d, p = model.predictor(d_en, s_dur, ...)
+
+Cause:
+- train_second.py used .squeeze() too aggressively.
+- With batch size 1 or a last partial batch, this can collapse a tensor from:
+  - [1, 128]
+  into:
+  - [128]
+- Then downstream code expects a 2D tensor and crashes with dimension/index errors.
+
+Patch:
+- User set batch_size >1 in config_burmese.yml
+
+Result:
+- This addressed the known batch-shape collapse issue.
+
+
+============================================================
+37. Update - 2026-05-12 Stage-Two Single GPU vs Dual GPU
+============================================================
+
+Observation:
+- Stage two ran on a single T4 at batch_size 4 without out-of-memory.
+- Switching to dual GPU at the same batch size caused OOM.
+- Even dual GPU batch_size 2 caused OOM.
+
+Explanation:
+- T4 x2 does not combine VRAM into one larger GPU.
+- StyleTTS2 train_second.py uses DataParallel-style behavior.
+- The model is replicated on each GPU.
+- GPU 0 often carries extra memory for outputs, losses, gathering buffers, and optimizer state.
+- Stage two is much heavier than stage one because it includes decoder, discriminator, WavLM/SLM, PLBERT, diffusion, style encoders, and multiple losses.
+
+Conclusion:
+- Dual GPU is not memory-saving for this stage.
+- Single GPU batch_size 4 is the stable path.
+
+Recommended launch:
+
+%cd /kaggle/working/styletts2
+
+!CUDA_VISIBLE_DEVICES=0 python train_second.py --config_path ./Configs/config_burmese.yml
+
+Recommended config:
+- batch_size: 4
+
+
+============================================================
+38. Update - 2026-05-12 Stage-Two Current Training Status
+============================================================
+
+Stage two successfully started on single GPU batch_size 4.
+
+Observed stage-two output:
+- Epoch [1/25], Step [10/600]
+  - Loss: 0.70316
+  - Disc Loss: 0.00000
+  - Dur Loss: 10.86696
+  - CE Loss: 0.37985
+  - Norm Loss: 4.55298
+  - F0 Loss: 20.20112
+  - LM Loss: 2.65159
+  - Gen Loss: 0.00000
+  - Sty Loss: 0.00000
+  - Diff Loss: 0.00000
+  - DiscLM Loss: 0.00000
+  - GenLM Loss: 0.00000
+
+- Epoch [1/25], Step [20/600]
+  - Loss: 0.64048
+  - Dur Loss: 5.10202
+  - CE Loss: 0.26626
+  - Norm Loss: 3.47112
+  - F0 Loss: 16.42716
+  - LM Loss: 2.73847
+
+- Epoch [1/25], Step [30/600]
+  - Loss: 0.64518
+  - Dur Loss: 2.78649
+  - CE Loss: 0.17445
+  - Norm Loss: 1.53443
+  - F0 Loss: 19.44825
+  - LM Loss: 2.56730
+
+Speed estimate:
+- Around 40 steps took about 86.3 seconds.
+- Approximate speed:
+  - 2.16 seconds per step
+- One epoch:
+  - 600 steps * 2.16 sec = about 21.6 minutes
+- Full 25-epoch stage two:
+  - about 9 hours
+
+Important caveat:
+- Later epochs may slow down when diffusion starts.
+- Current config had:
+  - diff_epoch: 20
+  - joint_epoch: 50
+  - TMA_epoch: 50
+
+Interpretation:
+- Stage two is now alive and training.
+- Duration, CE, and norm losses dropped quickly in the first few logged steps, which is a good sign.
+- Zero Gen/Disc/Sty/Diff/DiscLM/GenLM losses are still expected early depending on which stage-two losses are enabled at each epoch.
+
+
+============================================================
+39. Current State After Kaggle Migration Chat
+============================================================
+
+Completed:
+- StyleTTS2 setup migrated to Kaggle.
+- Kaggle downloads/checkpoint loading worked.
+- Stage-one training completed to epoch 50/50.
+- Stage-one result was cleaned for export.
+- first_stage.pth is the key completed stage-one output.
+- epoch_1st_00040.pth was intentionally kept as an extra backup checkpoint.
+- Stage-two training was started.
+- Stage-two PLBERT vocab mismatch was diagnosed and patched.
+- Stage-two squeeze/batch-shape bug was diagnosed and patched.
+- Stage-two dual-GPU OOM was explained.
+- Stage-two is continuing on single T4 with batch_size 4.
+
+Main remaining work:
+- Let stage two finish or monitor for the next error.
+- Preserve stage-two checkpoints.
+- Later, test generated audio quality.
+- If stage two succeeds, clean/export the final second-stage model similarly to the stage-one cleanup.
