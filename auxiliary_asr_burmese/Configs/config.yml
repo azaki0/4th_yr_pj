@@ -1,0 +1,26 @@
+log_dir: "Checkpoint/burmese_asr"
+save_freq: 10
+device: "cuda"
+epochs: 200
+batch_size: 40
+pretrained_model: ""
+train_data: "Data/burmese_train_list.txt"
+val_data: "Data/burmese_val_list.txt"
+
+preprocess_parasm:
+  sr: 24000
+  spect_params:
+    n_fft: 2048
+    win_length: 1200
+    hop_length: 300
+  mel_params:
+    n_mels: 80
+
+model_params:
+   input_dim: 80
+   hidden_dim: 256
+   n_token: 199
+   token_embedding_dim: 512
+
+optimizer_params:
+  lr: 0.0005

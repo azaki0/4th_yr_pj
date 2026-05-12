@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Robot AI Stream</title>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+    <div class="app-wrapper">
+        <main id="display-area">
+            <div id="stream-output">Robot System Online. Awaiting commands...</div>
+        </main>
+
+        <div id="dashboard-view" class="hidden">
+            <div class="left-panel">
+                <h3>SESSION SUMMARY</h3>
+                <div id="summary-text"></div>
+            </div>
+            <div class="right-panel">
+                <div class="top-right">
+                    <div class="stat-card">
+                        <label>URGENCY</label>
+                        <div id="urgency-val">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <label>SUSPECTED CONDITION</label>
+                        <div id="result-val">Awaiting Analysis...</div>
+                    </div>
+                </div>
+                <div class="bottom-right">
+                    <label>CONFIDENCE LEVEL</label>
+                    <div class="gauge-container">
+                        <div id="confidence-bar"></div>
+                        <span id="confidence-text" style="position: absolute; right: 10px; line-height: 20px; font-size: 14px; font-weight: bold;">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="static/script.js"></script>
+</body>
+</html>
