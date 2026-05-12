@@ -1,0 +1,67 @@
+{ "name": "Naypyitaw State Polytechnic University",
+  "short_name": "NSPU",
+  "general": "Naypyitaw State Polytechnic University is one of the best universities in Myanmar. Naypyitaw State Polytechnic University is a computer and technology university located in Mingalar Dipa quarter, Pobba Thiri Township, Naypyitaw Council Area. It is a university under the Department of Advanced Science and Technology, Ministry of Science and Technology.",
+  "history": ["Chairman of the State Administration Council Prime Minister Senior General Min Aung Hlaing inaugurated Naypyitaw Technological University on November 12th , 2022, with aims in providing high quality human resources which is vital for the development of the Nation, to support reginal development and social-economic well-being of the citizens,...", 
+              "and 6 new specialized engineering subjects in 2022-2023 academic year as well as specialization subject on agricultural engineering is also introduced in 2023-2024 academic year...",
+              "On November 21st of 2024, Chairman of the State Administration Council Prime Minister General Min Aung Hlaing relocated and expanded Naypyitaw Technological University to Naypyitaw State Polytechnic University (NSPU) in Pobba Thiri Township, Mingalar Dipa quarter at the junction of Yaza Thingaha Road and Thiri Mandaing Road, with the university premise area of 68 acres, in accordance with the 100th Anniversary of engineering education...",
+              "The university comprises 16 academic departments, including seven engineering majors, four computer majors, and five supporting departments. It offers seven engineering degrees and two computer science degrees, admitting 270 engineering students and 120 computer science students annually. The programs are designed to integrate theoretical knowledge with practical applications, preparing students for real-world challenges."],
+  "motto": "INNOVATION WITH INTEGRITY",
+  "departments": [
+    "Mechanical Engineering",
+    "Electrical Engineering",
+    "Civil Engineering",
+    "Architecture",
+    "Electrical Power Engineering",
+    "Agricultural Engineering",
+    "Computer Engineering And Information Technology"
+  ],
+
+  "mechanical_engineering": {
+    "overview": ["Mechanical engineering is the application of the principles and problem-solving techniques of engineering from design to manufacturing to the marketplace for any object...",
+                "Our courses are analyzed to develop a variety of skillful mechanical engineers who can solve today’s problems and build better, safer or more comfortable future for energy, transportation, space exploration, world hunger, health care, climate change, and more...",
+                " Mechanical engineering is all about six major groups/areas like: Solid Mechanics, Heat Transfer, Fluid Mechanics, Automotive, Production/ Manufacturing, Renewable Energy"],
+
+    "motto": "Improve Social Existence with Mechanical Engineering",
+    "members": {
+        "Dr. Nan Oo": {
+            "position": "Professor and Head",
+            "degree": "Ph.D(Mech)"
+        },
+        "Dr. Kyaw Win Tun": {
+            "position": "Associate Professor",
+            "degree": "Ph.D(Mech)"
+        },
+        "Dr. Ei Ei Phyu": {
+            "position": "Associate Professor",
+            "degree": "Ph.D(Mech)"
+        },
+        "Dr. Sanda Hlaing": {
+            "position": "Associate Professor",
+            "degree": "Ph.D(Mech)"
+        },
+        "Daw Theingi Nwe": {
+            "position": "Associate Professor",
+            "degree": "Ph.D(Mech)"
+        },
+        "Dr. Aye Chan Myae": {
+            "position": "Lecturer",
+            "degree": "Ph.D(Mech)"
+        },
+        "Daw Aye Myat Soe": {
+            "position": "Lecturer",
+            "degree": "BE(Mech)"
+        },
+        "U Wunna Htun": {
+            "position": "Tutor",
+            "degree": "BE(Mech)"
+        },
+        "Daw Aye Mon Mon Paing": {
+            "position": "Tutor",
+            "degree": "BE(Mech)"
+        },
+        "U Aung Thaw Khant": {
+            "position": "Lab Technician",
+            "degree": "ITC(Tigming)"
+        }} 
+    }
+  }
