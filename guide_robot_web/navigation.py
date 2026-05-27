@@ -1,6 +1,8 @@
 import heapq
 import re
 
+WALKING_SPEED_FT_PER_SEC = 3
+
 # Campus map scale from your measurement:
 # 28 pixels = 52.167 feet. Edge weights below are straight-line distances
 # between connected nodes, converted to feet and rounded to 2 decimals.
@@ -78,8 +80,8 @@ GRAPH = {
     "before_workshop_junction": {"roundabout_right_junction": 205.15, "workshop_left_entrance": 73.52, "after_workshop_junction": 214.26},
     "after_workshop_junction": {"before_workshop_junction": 214.26, "before_teacher_dormitory_junction_AB": 65.21, "to_viewpoint_node_1": 72.69},
     "before_teacher_dormitory_junction_AB": {"after_workshop_junction": 65.21, "teacher_dormitory_A": 19.0, "teacher_dormitory_B": 71.92, "after_teacher_dormitory_junction_AB": 93.16},
-    "after_teacher_dormitory_junction_AB": {"teacher_dormitory_A": 91.35, "teacher_dormitory_B": 76.59, "entrance_b": 96.9},
-    "to_viewpoint_node_1": {"after_workshop_junction": 72.69, "to_viewpoint_node_2": 105.98},
+    "after_teacher_dormitory_junction_AB": {"teacher_dormitory_A": 91.35, "teacher_dormitory_B": 76.59, "entrance_b": 96.9, "before_teacher_dormitory_junction_AB": 93.16},
+    "to_viewpoint_node_1": {"after_workshop_junction": 72.69, "to_viewpoint_node_2": 105.98, "workshop_right_entrance": 29.81},
     "to_viewpoint_node_2": {"to_viewpoint_node_1": 105.98, "to_viewpoint_node_3": 81.91, "teacher_dormitory_C": 104.23},
     "to_viewpoint_node_3": {"to_viewpoint_node_2": 81.91, "to_viewpoint_node_4": 132.33},
     "to_viewpoint_node_4": {"to_viewpoint_node_3": 132.33, "to_viewpoint_node_5": 139.35},
@@ -98,7 +100,7 @@ GRAPH = {
     "boys_dormitory_junction": {"to_dorms_junction_3": 65.21, "to_boys_dormitory_A": 48.9, "to_boys_dormitory_B": 80.98, "before_cafeteria_junction": 331.63},
     "to_boys_dormitory_A": {"boys_dormitory_junction": 48.9, "boys_dormitory_A": 90.2},
     "to_boys_dormitory_B": {"boys_dormitory_junction": 80.98, "boys_dormitory_B": 70.23},
-    "before_cafeteria_junction": {"boys_dormitory_junction": 331.63, "canteen": 82.17, "after_cafeteria_junction": 81.98},
+    "before_cafeteria_junction": {"boys_dormitory_junction": 331.63, "canteen": 82.17, "after_cafeteria_junction": 81.98, "stadium_entrance": 320.45},
     "after_cafeteria_junction": {"before_cafeteria_junction": 81.98, "canteen": 78.36, "girls_dormitory_junction": 232.89},
     "stadium_entrance": {"stadium": 41.66, "before_cafeteria_junction": 320.45},
     "girls_dormitory_junction": {"after_cafeteria_junction": 232.89, "girls_dormitory": 257.55},
@@ -156,7 +158,7 @@ def reconstruct_path(previous, destination_node):
 
 
 def determine_start_and_destination(sentence):
-    pattern = r"(?:from\s+(.+?)\s+to\s+(.+?)|to\s+(.+?)\s+from\s+(.+?))(?:\?|$)"
+    pattern = r"(?:from\s+(.+?)\s+to\s+(.+?)|to\s+(.+?)\s+from\s+(.+?))(?:[?.!]|$)"
 
     match = re.search(pattern, sentence, re.IGNORECASE)
     if match:
@@ -171,8 +173,8 @@ def determine_start_and_destination(sentence):
 
         clean_filler = r"^(?:the|a|an)\s+"
         
-        current_pos = re.sub(clean_filler, "", current_pos.strip(), flags=re.IGNORECASE)
-        destination = re.sub(clean_filler, "", destination.strip(), flags=re.IGNORECASE)
+        current_pos = re.sub(clean_filler, "", current_pos.strip(" .?!"), flags=re.IGNORECASE)
+        destination = re.sub(clean_filler, "", destination.strip(" .?!"), flags=re.IGNORECASE)
                 
         return current_pos, destination
     
@@ -196,12 +198,21 @@ def find_place(query):
             return temp[::-1]
         else:
             return temp
+    elif len(temp) > 2:
+        start_text, destination_text = determine_start_and_destination(normalized)
+        if start_text and destination_text:
+            start_match = next((item for item in temp if item[0] in start_text), None)
+            destination_match = next((item for item in temp if item[0] in destination_text), None)
+            if start_match and destination_match:
+                return [start_match, destination_match]
 
     return None, None
 
 
 def route_to_place(query, start_node="entrance"):
     found_places = find_place(query)
+    place = None
+    place_name = None
 
     if isinstance(found_places, tuple):
         place_name, place = found_places
@@ -219,14 +230,32 @@ def route_to_place(query, start_node="entrance"):
     if distances[destination_node] == float("inf"):
         return None
 
+    distance = round(distances[destination_node], 2)
+    walking_time_seconds = round(distance / WALKING_SPEED_FT_PER_SEC)
+
     return {
         "start": start_node,
+        "startName": NODES[start_node]["label"],
         "destination": destination_node,
         "destinationName": NODES[destination_node]["label"],
         "matchedPlace": place_name,
-        "distance": round(distances[destination_node], 2),
+        "distance": distance,
         "distanceUnit": "ft",
+        "walkingTimeSeconds": walking_time_seconds,
+        "walkingTimeText": format_walking_time(walking_time_seconds),
         "path": path,
         "points": [NODES[node] | {"id": node} for node in path],
     }
 
+
+def format_walking_time(seconds):
+    if seconds < 60:
+        return f"{seconds} sec"
+
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+
+    if remaining_seconds == 0:
+        return f"{minutes} min"
+
+    return f"{minutes} min {remaining_seconds} sec"

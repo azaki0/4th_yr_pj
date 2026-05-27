@@ -212,11 +212,12 @@ def build_route_context(prompt):
         return None
 
     show_route(json.dumps(route))
-    steps = " -> ".join(point["label"] for point in route["points"])
     return (
-        f"DISPLAYED ROUTE: destination={route['destinationName']}; "
-        f"path={steps}; distance={route['distance']} feet. "
-        "Tell the user the route is shown on the display and summarize the walking directions."
+        f"DISPLAYED ROUTE: start={route['startName']}; destination={route['destinationName']}; "
+        f"distance={route['distance']} feet; estimated walking time={route['walkingTimeText']}. "
+        "Answer in one short sentence only. Start with: The direction is shown on the display. "
+        "Then mention only the start, destination, distance, and estimated time. "
+        "Do not list internal route nodes or step-by-step directions."
     )
 
 

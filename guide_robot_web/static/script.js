@@ -3,10 +3,12 @@ const displayArea = document.getElementById('display-area');
 const routeView = document.getElementById('route-view');
 const routeLine = document.getElementById('route-line');
 const routeMarkers = document.getElementById('route-markers');
+const routeStart = document.getElementById('route-start');
 const destinationName = document.getElementById('destination-name');
 const routeDistance = document.getElementById('route-distance');
-const routeSteps = document.getElementById('route-steps');
 const routeNarration = document.getElementById('route-narration');
+const mapDistance = document.getElementById('map-distance');
+const mapTime = document.getElementById('map-time');
 
 let isNewResponse = true;
 
@@ -115,28 +117,16 @@ function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
 
+    routeStart.innerText = data.startName ? `From ${data.startName}` : "From current location";
     destinationName.innerText = data.destinationName || "Destination";
     routeDistance.innerText = `${data.distance ?? "--"} ${data.distanceUnit || "feet"}`;
+    mapDistance.innerText = `${data.distance ?? "--"} ${data.distanceUnit || "ft"}`;
+    mapTime.innerHTML = `Estimated walking time:<br><span>${data.walkingTimeText || "--"}</span>`;
 
     const points = data.points || [];
     routeLine.setAttribute('points', points.map(point => `${point.x},${point.y}`).join(' '));
     routeMarkers.innerHTML = '';
-    routeSteps.innerHTML = '';
     routeNarration.innerHTML = '';
-
-    points.forEach((point, index) => {
-        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        marker.setAttribute('cx', point.x);
-        marker.setAttribute('cy', point.y);
-        marker.setAttribute('r', index === 0 || index === points.length - 1 ? 9 : 6);
-        marker.setAttribute('class', index === 0 ? 'start-marker' : index === points.length - 1 ? 'end-marker' : 'path-marker');
-        routeMarkers.appendChild(marker);
-
-        const step = document.createElement('div');
-        step.className = 'route-step';
-        step.innerHTML = `<span>${index + 1}</span><p>${point.label}</p>`;
-        routeSteps.appendChild(step);
-    });
 }
 
 listenToStream();
