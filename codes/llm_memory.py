@@ -44,7 +44,7 @@ SAMPLE_RATE = 16000
 os.environ["HF_HUB_OFFLINE"] = "1"
 warnings.filterwarnings("ignore")
 
-QWEN_MODEL_PATH = r"D:\models\qwen\qwen2.5-7b-instruct-q4_k_m.gguf"
+QWEN_MODEL_PATH = r"D:\models\qwen\qwen2.5-3b-instruct-q8_0.gguf"
 EMBEDDING_MODEL_PATH = "D:/models/nomic-embed-text-v1.5.Q6_K.gguf"
 TRANSLATER_MODEL_PATH = r"D:\models\nllb-200-distilled-600M"
 device = "cpu"
