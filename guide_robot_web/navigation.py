@@ -1,11 +1,9 @@
 import heapq
 import re
 
-WALKING_SPEED_FT_PER_SEC = 3
+WALKING_SPEED_FT_PER_SEC = 2
 
-# Campus map scale from your measurement:
-# 28 pixels = 52.167 feet. Edge weights below are straight-line distances
-# between connected nodes, converted to feet and rounded to 2 decimals.
+# 28 pixels = 52.167 ft
 NODES = {
     "entrance": {"label": "Main Entrance", "x": 858, "y": 853},
     "entrance_b": {"label": "Entrance B", "x": 1252, "y": 704},
@@ -56,6 +54,7 @@ NODES = {
     "girls_dormitory_junction": {"label": "Girls Dormitory Junction", "x": 243, "y": 620},
 }
 
+#converted to distance ft
 GRAPH = {
     "entrance": {"main_entrance_before_roundabout_junction": 221.71},
     "entrance_b": {"after_teacher_dormitory_junction_AB": 96.9},

@@ -2,7 +2,7 @@
 /medical_ai/medical/
 /robot_head/
 /logs/
-/txt_files/uni_info.txt
+/txt_files
 /codes/__pycache__/
 *.pth
 *.pyc

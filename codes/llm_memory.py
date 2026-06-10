@@ -9,13 +9,14 @@ from tqdm import tqdm
 from colorama import Fore
 from llama_cpp import Llama
 from psycopg.rows import dict_row
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, VitsModel
+from transformers import AutoConfig, AutoModelForSeq2SeqLM, AutoTokenizer, VitsModel, AutoModelForCTC, AutoProcessor
 import torch
 import threading
 from queue import Queue
 import re
 from num2words import num2words
-from silero import VoiceTranscriber
+import numpy as np
+from collections import deque
 
 client = chromadb.Client()
 
@@ -40,17 +41,46 @@ DB_PARAMS = {
 }
 
 SAMPLE_RATE = 16000
+MIC_BLOCK_SECONDS = 0.25
+MIC_SILENCE_THRESHOLD = 0.01
+MIC_START_THRESHOLD = 0.02
+MIC_END_SILENCE_SECONDS = 0.8
+MIC_MIN_SPEECH_SECONDS = 0.6
+MIC_MAX_SPEECH_SECONDS = 12.0
+MIC_PREROLL_SECONDS = 0.5
+MIC_CALIBRATION_SECONDS = 1.0
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 warnings.filterwarnings("ignore")
 
-QWEN_MODEL_PATH = r"D:\models\qwen\qwen2.5-3b-instruct-q8_0.gguf"
+QWEN_MODEL_PATH = "D:/models/qwen/qwen2.5-3b-instruct-q8_0.gguf"
 EMBEDDING_MODEL_PATH = "D:/models/nomic-embed-text-v1.5.Q6_K.gguf"
-TRANSLATER_MODEL_PATH = r"D:\models\nllb-200-distilled-600M"
+TRANSLATER_MODEL_PATH = "D:/models/nllb-200-distilled-600M"
 device = "cpu"
-TTS_MODEL_PATH = r"D:\codes\Vits_mms_finetune\finetune-hf-vits\mms-tts-mya-female-v1"
-WHISPER_PATH = r"D:\models\models--Systran--faster-distil-whisper-small.en\snapshots\ef77d90526ccd62cde3808ee70626a01e5cf83e4"
-VAD_PATH = r"txt_files\silero_vad.jit"
+TTS_MODEL_PATH = "D:/codes/Vits_mms_finetune/finetune-hf-vits/mms-tts-mya-female-v1"
+W2V2_MODEL_PATH = "D:/models/burmese_w2v2_asr_8bit"
+
+asr_processor = AutoProcessor.from_pretrained(W2V2_MODEL_PATH)
+asr_config = AutoConfig.from_pretrained(W2V2_MODEL_PATH)
+if hasattr(asr_config, "quantization_config"):
+    delattr(asr_config, "quantization_config")
+
+if torch.cuda.is_available():
+    torch.cuda.set_device(0)
+    asr_model = AutoModelForCTC.from_pretrained(
+        W2V2_MODEL_PATH,
+        config=asr_config,
+        low_cpu_mem_usage=True,
+    )
+    asr_model.to("cuda")
+else:
+    asr_model = AutoModelForCTC.from_pretrained(
+        W2V2_MODEL_PATH,
+        config=asr_config,
+        low_cpu_mem_usage=True,
+    )
+
+print("Quantized Burmese Wav2Vec2 model loaded successfully!")
 
 llm = Llama(
     model_path=QWEN_MODEL_PATH,
@@ -64,9 +94,6 @@ model = AutoModelForSeq2SeqLM.from_pretrained(TRANSLATER_MODEL_PATH).to(device)
 
 tts_model = VitsModel.from_pretrained(TTS_MODEL_PATH)
 tts_tokenizer = AutoTokenizer.from_pretrained(TTS_MODEL_PATH)
-
-listener = VoiceTranscriber(WHISPER_PATH, VAD_PATH)
-listener.start_listening()
 
 print("I'm listening.")
 
@@ -94,6 +121,77 @@ def numbers_to_words(text, lang='en'):
             except Exception:
                 return token
     return number_pattern.sub(repl, text)
+
+def transcribe_audio(audio):
+    audio = np.asarray(audio, dtype=np.float32)
+    audio = audio - float(np.mean(audio))
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if peak < 1e-4:
+        return ""
+    audio = audio / max(peak, 1.0)
+
+    inputs = asr_processor(audio, sampling_rate=SAMPLE_RATE, return_tensors="pt", padding=True)
+    asr_device = next(asr_model.parameters()).device
+    inputs = {key: value.to(asr_device) for key, value in inputs.items()}
+
+    with torch.no_grad():
+        logits = asr_model(**inputs).logits
+
+    predicted_ids = torch.argmax(logits, dim=-1)
+    transcription = asr_processor.batch_decode(predicted_ids)[0]
+    return transcription.strip()
+
+def record_utterance():
+    block_size = int(SAMPLE_RATE * MIC_BLOCK_SECONDS)
+    silence_blocks_needed = max(1, int(MIC_END_SILENCE_SECONDS / MIC_BLOCK_SECONDS))
+    max_blocks = max(1, int(MIC_MAX_SPEECH_SECONDS / MIC_BLOCK_SECONDS))
+    min_samples = int(MIC_MIN_SPEECH_SECONDS * SAMPLE_RATE)
+    calibration_blocks = max(1, int(MIC_CALIBRATION_SECONDS / MIC_BLOCK_SECONDS))
+    preroll_blocks = max(1, int(MIC_PREROLL_SECONDS / MIC_BLOCK_SECONDS))
+
+    chunks = []
+    preroll = deque(maxlen=preroll_blocks)
+    speech_started = False
+    silent_blocks = 0
+
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='float32', blocksize=block_size) as stream:
+        noise_floor = 0.0
+        for _ in range(calibration_blocks):
+            block, _ = stream.read(block_size)
+            block = block.reshape(-1)
+            noise_floor += float(np.sqrt(np.mean(np.square(block))))
+
+        noise_floor /= calibration_blocks
+        start_threshold = max(MIC_START_THRESHOLD, noise_floor * 3.0)
+        silence_threshold = max(MIC_SILENCE_THRESHOLD, noise_floor * 1.5)
+
+        while True:
+            block, _ = stream.read(block_size)
+            block = block.reshape(-1)
+            volume = float(np.sqrt(np.mean(np.square(block))))
+
+            if not speech_started:
+                preroll.append(block.copy())
+                if volume >= start_threshold:
+                    speech_started = True
+                    chunks.extend(preroll)
+                    chunks.append(block.copy())
+                continue
+
+            chunks.append(block.copy())
+
+            if volume < silence_threshold:
+                silent_blocks += 1
+            else:
+                silent_blocks = 0
+
+            enough_audio = sum(len(chunk) for chunk in chunks) >= min_samples
+            reached_silence = silent_blocks >= silence_blocks_needed
+            reached_limit = len(chunks) >= max_blocks
+
+            if (enough_audio and reached_silence) or reached_limit:
+                audio = np.concatenate(chunks)
+                return audio
 
 def audio_player():
     while True:
@@ -295,6 +393,58 @@ def recall(prompt):
     convo.append({'role': 'user', 'content': f'MEMORIES: {embeddings} \n\n USER PROMPT: {prompt}'})
     print(f'\n{len(embeddings)} messages:response embeddings added for context.')
 
+def handle_prompt(prompt):
+    global convo
+
+    prompt = prompt.strip()
+    if not prompt:
+        return True
+
+    if prompt.lower() == 'q':
+        return False
+
+    if prompt[:7].lower() == '/recall':
+        prompt = prompt[8:].strip()
+        recall(prompt)
+        stream_response(prompt)
+    elif prompt[:7].lower() == '/forget':
+        remove_last_conversation()
+        convo = convo[:-2]
+        print('\n')
+    elif prompt[:9].lower() == '/memorize':
+        prompt = prompt[10:].strip()
+        store_conversations(prompt, response='Memory stored.')
+        print('\n')
+    else:
+        convo.append({'role': 'user', 'content': prompt})
+        stream_response(prompt)
+
+    return True
+
+def voice_loop():
+    print(Fore.WHITE + "\nVoice mode started..\n")
+
+    while True:
+        try:
+            print(Fore.WHITE + "Listening...")
+            audio = record_utterance()
+            burmese_prompt = transcribe_audio(audio)
+            prompt = translate(burmese_prompt, "mya_Mymr", "eng_Latn")
+            print(burmese_prompt)
+
+            if not prompt:
+                print(Fore.YELLOW + "No speech recognized.\n")
+                continue
+
+            print(Fore.WHITE + f"User: {prompt}")
+            if not handle_prompt(prompt):
+                break
+
+            audio_queue.join()
+        except KeyboardInterrupt:
+            print(Fore.YELLOW + "\nVoice mode stopped.\n")
+            break
+
 #conversations = fetch_conversations()
 #create_vector_db(conversations=conversations)
 
@@ -320,23 +470,9 @@ def recall(prompt):
 
 while True:
     prompt = input(Fore.WHITE + 'User: \n')
-    #user_input = listener.get_next_text()
-    #prompt = "/recall "+ user_input
-    if prompt == 'q':
-        break
+    if prompt.strip().lower() == '/voice':
+        voice_loop()
+        continue
 
-    if prompt[:7].lower() == '/recall':
-        prompt = prompt[8:]
-        recall(prompt)
-        stream_response(prompt)
-    elif prompt[:7].lower() == '/forget':
-        remove_last_conversation()
-        convo = convo[:-2]
-        print('\n')
-    elif prompt[:9].lower() == '/memorize':
-        prompt = prompt[10:]
-        store_conversations(prompt, response='Memory stored.')
-        print('\n')
-    else:
-        convo.append({'role': 'user', 'content': prompt})
-        stream_response(prompt)
+    if not handle_prompt(prompt):
+        break

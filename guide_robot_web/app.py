@@ -33,5 +33,5 @@ if __name__ == "__main__":
 
     threading.Thread(target=run_guide_agent, daemon=True).start()
 
-    print("--- Guide Robot Display Starting on Port 5000 ---")
+    print("Display Starting on Port 5000")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True, use_reloader=False)
