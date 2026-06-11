@@ -9,6 +9,7 @@ const routeDistance = document.getElementById('route-distance');
 const routeNarration = document.getElementById('route-narration');
 const mapDistance = document.getElementById('map-distance');
 const mapTime = document.getElementById('map-time');
+const routeHeading = document.querySelector('.direction-panel h3');
 
 let isNewResponse = true;
 
@@ -117,11 +118,21 @@ function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
 
-    routeStart.innerText = data.startName ? `From ${data.startName}` : "From current location";
-    destinationName.innerText = data.destinationName || "Destination";
-    routeDistance.innerText = `${data.distance ?? "--"} ${data.distanceUnit || "feet"}`;
-    mapDistance.innerText = `${data.distance ?? "--"} ${data.distanceUnit || "ft"}`;
-    mapTime.innerHTML = `Estimated walking time:<br><span>${data.walkingTimeText || "--"}</span>`;
+    const isMyanmar = data.displayLanguage === 'mm';
+    const startName = data.startNameLocalized || data.startName;
+    const destination = data.destinationNameLocalized || data.destinationName || (isMyanmar ? 'သွားမည့်နေရာ' : 'Destination');
+    const distance = data.distanceLocalized || data.distance || '--';
+    const distanceUnit = data.distanceUnitLocalized || data.distanceUnit || (isMyanmar ? 'ပေ' : 'feet');
+    const walkingTimeText = data.walkingTimeTextLocalized || data.walkingTimeText || '--';
+
+    routeHeading.innerText = isMyanmar ? 'လမ်းကြောင်း' : 'ROUTE';
+    routeStart.innerText = startName
+        ? `${isMyanmar ? 'မှ' : 'From'} ${startName}`
+        : (isMyanmar ? 'လက်ရှိနေရာမှ' : 'From current location');
+    destinationName.innerText = destination;
+    routeDistance.innerText = `${distance} ${distanceUnit}`;
+    mapDistance.innerText = `${distance} ${distanceUnit}`;
+    mapTime.innerHTML = `${isMyanmar ? 'ခန့်မှန်းလမ်းလျှောက်ချိန်' : 'Estimated walking time'}:<br><span>${walkingTimeText}</span>`;
 
     const points = data.points || [];
     routeLine.setAttribute('points', points.map(point => `${point.x},${point.y}`).join(' '));

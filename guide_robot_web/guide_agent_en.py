@@ -212,12 +212,15 @@ def build_route_context(prompt):
         return None
 
     show_route(json.dumps(route))
+    route_sentence = (
+        "The direction is shown on the display. "
+        f"From {route['startName']} to {route['destinationName']}, "
+        f"the distance is {route['distance']} feet and the estimated walking time is {route['walkingTimeText']}."
+    )
     return (
-        f"DISPLAYED ROUTE: start={route['startName']}; destination={route['destinationName']}; "
-        f"distance={route['distance']} feet; estimated walking time={route['walkingTimeText']}. "
-        "Answer in one short sentence only. Start with: The direction is shown on the display. "
-        "Then mention only the start, destination, distance, and estimated time. "
-        "Do not list internal route nodes or step-by-step directions."
+        f"Route already shown to the user: {route_sentence} "
+        "Reply with exactly that sentence in natural English. "
+        "Do not include labels like start=, destination=, distance=, or any internal node names."
     )
 
 
@@ -290,21 +293,30 @@ def main():
     while True:
         prompt = input(Fore.WHITE + "\nUser:\n")
 
-        if prompt == "q":
+        if not handle_prompt(prompt):
             break
 
-        if prompt.startswith("/recall"):
-            prompt = prompt[8:]
-            recall(prompt)
+def handle_prompt(prompt):
+    prompt = prompt.strip()
+    if not prompt:
+        return True
 
-        elif prompt.startswith("/forget"):
-            remove_last_conversation()
-            if len(convo) >= 2:
-                convo[:] = convo[:-2]
-            print("Last memory removed.")
-            continue
+    if prompt.lower() == "q":
+        return False
 
+    if prompt.startswith("/recall"):
+        prompt = prompt[8:].strip()
+        recall(prompt)
         stream_and_tts(prompt)
+    elif prompt.startswith("/forget"):
+        remove_last_conversation()
+        if len(convo) >= 2:
+            convo[:] = convo[:-2]
+        print("Last memory removed.")
+    else:
+        stream_and_tts(prompt)
+
+    return True
 
 
 if __name__ == "__main__":

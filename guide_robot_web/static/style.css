@@ -220,3 +220,90 @@ body {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+.admin-body {
+    overflow: auto;
+    user-select: auto;
+}
+
+.admin-shell {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 28px;
+    background: #121212;
+}
+
+.admin-panel {
+    width: min(100%, 620px);
+    display: grid;
+    gap: 24px;
+}
+
+.admin-kicker {
+    color: #0b93f6;
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.admin-panel h1 {
+    margin-top: 8px;
+    font-size: 34px;
+    line-height: 1.1;
+}
+
+.mode-control {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.mode-button,
+.prompt-form button {
+    min-height: 46px;
+    border: 1px solid #333;
+    background: #1b1b1b;
+    color: #fff;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.mode-button.active {
+    border-color: #0b93f6;
+    background: #0b93f6;
+}
+
+.prompt-form {
+    display: grid;
+    gap: 12px;
+}
+
+.prompt-form label {
+    color: #aaa;
+    font-size: 14px;
+}
+
+.prompt-form textarea {
+    width: 100%;
+    resize: vertical;
+    min-height: 170px;
+    border: 1px solid #333;
+    background: #080808;
+    color: #fff;
+    padding: 14px;
+    font-size: 17px;
+    line-height: 1.45;
+}
+
+.prompt-form button {
+    background: #0b93f6;
+    border-color: #0b93f6;
+    font-weight: 700;
+}
+
+.admin-status {
+    color: #aaa;
+    min-height: 24px;
+}

@@ -117,7 +117,7 @@ PLACES = {
     "view point": {"node": "view_point", "type": "facility", "aliases": ["viewpoint", "view place"]},
     "boys dormitory a": {"node": "boys_dormitory_A", "type": "dormitory", "aliases": ["boys dorm a", "male dormitory a"]},
     "boys dormitory b": {"node": "boys_dormitory_B", "type": "dormitory", "aliases": ["boys dorm b", "male dormitory b"]},
-    "canteen": {"node": "canteen", "type": "facility", "aliases": ["cafeteria", "food court", "dining hall"]},
+    "canteen": {"node": "canteen", "type": "facility", "aliases": ["cafeteria", "food court", "dining hall", "restaurant"]},
     "girls dormitory": {"node": "girls_dormitory", "type": "dormitory", "aliases": ["girls dorm", "female dormitory"]},
     "stadium": {"node": "stadium", "type": "facility", "aliases": ["sports ground", "football field"]},
 }
