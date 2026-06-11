@@ -43,7 +43,7 @@ a { text-decoration: none; color: inherit; }
     overflow: hidden;
 }
 
-/* ── Sidebar ── */
+/* Sidebar */
 .sidebar {
     width: 220px;
     flex-shrink: 0;
@@ -148,7 +148,7 @@ a { text-decoration: none; color: inherit; }
     color: var(--text-secondary);
 }
 
-/* ── Main ── */
+/* Main */
 .main {
     flex: 1;
     display: flex;
@@ -203,7 +203,7 @@ a { text-decoration: none; color: inherit; }
 .content::-webkit-scrollbar-track { background: transparent; }
 .content::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 4px; }
 
-/* ── Cards ── */
+/* Cards */
 .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
@@ -256,7 +256,7 @@ a { text-decoration: none; color: inherit; }
     margin-top: 1px;
 }
 
-/* ── Language Mode ── */
+/* Language Mode */
 .mode-control {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -305,7 +305,7 @@ a { text-decoration: none; color: inherit; }
     background: rgba(79, 142, 247, 0.2);
 }
 
-/* ── Inputs ── */
+/* Inputs */
 .field-label {
     display: block;
     font-size: 12px;
@@ -358,7 +358,7 @@ a { text-decoration: none; color: inherit; }
 .text-area::placeholder { color: var(--text-muted); }
 .text-area--sm { min-height: 80px; }
 
-/* ── Buttons ── */
+/* Buttons */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -411,7 +411,7 @@ a { text-decoration: none; color: inherit; }
     color: var(--accent-blue);
 }
 
-/* ── Remote form ── */
+/* Remote form */
 .remote-form {
     display: flex;
     flex-direction: column;
@@ -427,7 +427,7 @@ a { text-decoration: none; color: inherit; }
     min-width: 0;
 }
 
-/* ── Prompt form ── */
+/* Prompt form */
 .prompt-form {
     display: flex;
     flex-direction: column;
@@ -440,7 +440,7 @@ a { text-decoration: none; color: inherit; }
     margin-top: 12px;
 }
 
-/* ── Database actions ── */
+/* Database actions */
 .database-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -488,7 +488,7 @@ a { text-decoration: none; color: inherit; }
     gap: 10px;
 }
 
-/* ── Status bar ── */
+/* Status bar */
 .statusbar {
     display: flex;
     align-items: center;
@@ -512,7 +512,7 @@ a { text-decoration: none; color: inherit; }
     color: var(--text-secondary);
 }
 
-/* ── Responsive ── */
+/* Responsive */
 @media (max-width: 860px) {
     .row-2col {
         grid-template-columns: 1fr;

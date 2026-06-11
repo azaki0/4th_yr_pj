@@ -2,7 +2,6 @@ import logging
 import threading
 from queue import Queue
 from flask import Flask, Response, jsonify, render_template, request
-
 from bridge import display_queue
 from memory_store import (
     add_manual_memory,
@@ -18,16 +17,13 @@ app = Flask(__name__)
 prompt_queue = Queue()
 current_mode = {"language": "en"}
 
-
 @app.route("/")
 def index():
     return render_template("index.html")
 
-
 @app.route("/admin")
 def admin():
     return render_template("admin.html")
-
 
 @app.route("/api/mode", methods=["GET", "POST"])
 def mode():
@@ -41,7 +37,6 @@ def mode():
 
     return jsonify(current_mode)
 
-
 @app.route("/api/prompt", methods=["POST"])
 def submit_prompt():
     data = request.get_json(silent=True) or {}
@@ -52,7 +47,6 @@ def submit_prompt():
     prompt_queue.put({"language": current_mode["language"], "prompt": prompt})
     return jsonify({"queued": True, "language": current_mode["language"]})
 
-
 @app.route("/api/remote", methods=["GET", "POST"])
 def remote_config():
     if request.method == "POST":
@@ -60,7 +54,6 @@ def remote_config():
         set_config(url=data.get("url"), token=data.get("token"))
 
     return jsonify(get_config())
-
 
 @app.route("/api/admin/db", methods=["GET", "POST"])
 def admin_db():
@@ -89,7 +82,6 @@ def admin_db():
     result["status"] = memory_status()
     return jsonify(result)
 
-
 @app.route("/stream")
 def stream():
     def generate():
@@ -98,7 +90,6 @@ def stream():
             yield chunk + "\n"
 
     return Response(generate(), mimetype="text/plain")
-
 
 def run_guide_agent():
     print("Guide Robot prompt worker ready.")
@@ -111,7 +102,6 @@ def run_guide_agent():
             print(f"Prompt worker error: {exc}")
         finally:
             prompt_queue.task_done()
-
 
 if __name__ == "__main__":
     log = logging.getLogger("werkzeug")

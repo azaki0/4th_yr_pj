@@ -4,7 +4,6 @@ import os
 import re
 import threading
 import warnings
-
 import numpy as np
 import torch
 from flask import Flask, Response, jsonify, request, stream_with_context
@@ -13,7 +12,6 @@ from kokoro import KPipeline
 from llama_cpp import Llama
 from num2words import num2words
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, VitsModel
-
 from navigation import route_to_place
 
 
@@ -77,10 +75,8 @@ vits_tokenizer = None
 kokoro_pipeline = None
 vits_sample_rate = 16000
 
-
 def resolve_hf_model(local_path, model_id):
     return local_path if local_path and os.path.exists(local_path) else model_id
-
 
 def resolve_gguf_path(local_path, repo_id, filename):
     if local_path and os.path.exists(local_path):
@@ -133,7 +129,6 @@ def resolve_gguf_path(local_path, repo_id, filename):
 
     raise FileNotFoundError(f"Could not find GGUF file '{filename}' in {repo_id}")
 
-
 def get_llm(language):
     global llm_en
 
@@ -145,7 +140,6 @@ def get_llm(language):
         llm_en = Llama(model_path=model_path, n_ctx=4096, n_gpu_layers=N_GPU_LAYERS, verbose=False)
     return llm_en
 
-
 def get_translator():
     global translator_tokenizer, translator_model
 
@@ -155,7 +149,6 @@ def get_translator():
         translator_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
 
     return translator_tokenizer, translator_model
-
 
 def get_vits():
     global vits_model, vits_tokenizer, vits_sample_rate
@@ -167,7 +160,6 @@ def get_vits():
         vits_sample_rate = getattr(vits_model.config, "sampling_rate", 16000)
 
     return vits_model, vits_tokenizer, vits_sample_rate
-
 
 def get_kokoro():
     global kokoro_pipeline
@@ -188,16 +180,13 @@ def authorized():
     auth_header = request.headers.get("Authorization", "")
     return auth_header == f"Bearer {API_TOKEN}"
 
-
 def event(event_type, data=None, **extra):
     payload = {"type": event_type, "data": data}
     payload.update(extra)
     return json.dumps(payload, ensure_ascii=False) + "\n"
 
-
 def normalize_numwords(text):
     return text.replace(",", "").replace(" and ", " ")
-
 
 def numbers_to_words(text):
     def repl(match):
@@ -215,10 +204,8 @@ def numbers_to_words(text):
 
     return number_pattern.sub(repl, text)
 
-
 def to_myanmar_number(value):
     return str(value).translate(MYANMAR_DIGITS)
-
 
 def format_walking_time_mm(seconds):
     if seconds < 60:
@@ -231,7 +218,6 @@ def format_walking_time_mm(seconds):
 
     return f"{to_myanmar_number(minutes)} မိနစ် {to_myanmar_number(remaining_seconds)} စက္ကန့်"
 
-
 def translate(text, src_lang, target_lang):
     
     tokenizer.src_lang = src_lang
@@ -242,7 +228,6 @@ def translate(text, src_lang, target_lang):
         max_length=512,
     )
     return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
-
 
 def text_chunker(token_stream):
     buffer = ""
@@ -257,7 +242,6 @@ def text_chunker(token_stream):
     if buffer.strip():
         yield buffer.strip()
 
-
 def kokoro_tts(text):
     wav = None
     
@@ -267,14 +251,12 @@ def kokoro_tts(text):
         return None
     return np.asarray(wav, dtype=np.float32), 24000
 
-
 def vits_tts(text):
     
     inputs = vit_tokenizer(text, return_tensors="pt")
     with torch.no_grad():
         output = vit_model(**inputs).waveform
     return output.squeeze().cpu().numpy().astype(np.float32), sample_rate
-
 
 def audio_event(audio, sample_rate):
     return event(
@@ -283,7 +265,6 @@ def audio_event(audio, sample_rate):
         sampleRate=sample_rate,
         dtype=str(audio.dtype),
     )
-
 
 def localize_route(route, language):
     if language != "mm":
@@ -296,7 +277,6 @@ def localize_route(route, language):
     route["distanceUnitLocalized"] = "ပေ"
     route["walkingTimeTextLocalized"] = format_walking_time_mm(route["walkingTimeSeconds"])
     return route
-
 
 def build_route_context(english_prompt, language):
     route = route_to_place(english_prompt)
@@ -317,7 +297,6 @@ def build_route_context(english_prompt, language):
     )
     return route, context
 
-
 def stream_completion(prompt, language):
     
     convo = conversations[language]
@@ -334,14 +313,12 @@ def stream_completion(prompt, language):
         if "content" in delta:
             yield delta["content"]
 
-
 def format_context(title, chunks):
     clean_chunks = [chunk.strip() for chunk in chunks if isinstance(chunk, str) and chunk.strip()]
     if not clean_chunks:
         return ""
     joined = "\n\n".join(f"- {chunk}" for chunk in clean_chunks)
     return f"{title}:\n{joined}\n\n"
-
 
 def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_context=None):
     yield event("reset")
@@ -387,11 +364,9 @@ def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_con
         },
     )
 
-
 @app.route("/health")
 def health():
     return jsonify({"ok": True})
-
 
 @app.route("/chat/stream", methods=["POST"])
 def chat_stream():
@@ -415,7 +390,6 @@ def chat_stream():
         mimetype="text/plain",
     )
 
-
 @app.route("/translate", methods=["POST"])
 def translate_api():
     if not authorized():
@@ -430,7 +404,6 @@ def translate_api():
         return jsonify({"error": "text is required"}), 400
 
     return jsonify({"translatedText": translate(text, source, target)})
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8000")), debug=False, threaded=True)

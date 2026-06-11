@@ -3,25 +3,20 @@ import json
 import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-
 import numpy as np
 import sounddevice as sd
-
 from bridge import reset_display, send_event, send_text, show_route
 from memory_store import retrieve_context, store_conversation
-
 
 KAGGLE_AGENT_URL = os.getenv("KAGGLE_AGENT_URL", "").rstrip("/")
 KAGGLE_AGENT_TOKEN = os.getenv("KAGGLE_AGENT_TOKEN", "")
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("KAGGLE_AGENT_TIMEOUT", "600"))
-
 
 def get_config():
     return {
         "url": KAGGLE_AGENT_URL,
         "hasToken": bool(KAGGLE_AGENT_TOKEN),
     }
-
 
 def set_config(url=None, token=None):
     global KAGGLE_AGENT_URL, KAGGLE_AGENT_TOKEN
@@ -32,13 +27,11 @@ def set_config(url=None, token=None):
     if token is not None:
         KAGGLE_AGENT_TOKEN = token.strip()
 
-
 def _headers():
     headers = {"Content-Type": "application/json"}
     if KAGGLE_AGENT_TOKEN:
         headers["Authorization"] = f"Bearer {KAGGLE_AGENT_TOKEN}"
     return headers
-
 
 def _play_audio(event):
     audio_b64 = event.get("data")
@@ -53,7 +46,6 @@ def _play_audio(event):
     sd.play(audio, samplerate=sample_rate)
     sd.wait()
 
-
 def _forward_event(event):
     event_type = event.get("type")
 
@@ -67,7 +59,6 @@ def _forward_event(event):
         _play_audio(event)
     elif event_type:
         send_event(event_type, event.get("data"))
-
 
 def translate_prompt(prompt, language):
     if language != "mm":
@@ -84,7 +75,6 @@ def translate_prompt(prompt, language):
     with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
         data = json.loads(response.read().decode("utf-8"))
     return data.get("translatedText", prompt)
-
 
 def handle_prompt(prompt, language):
     if not KAGGLE_AGENT_URL:

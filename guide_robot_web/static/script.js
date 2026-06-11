@@ -11,84 +11,77 @@ const mapDistance = document.getElementById('map-distance');
 const mapTime = document.getElementById('map-time');
 const routeHeading = document.querySelector('.direction-panel h3');
 const streamCursor = document.getElementById('stream-cursor');
-const qrSection = document.getElementById('qr-section');
-const qrContainer = document.getElementById('qrcode-container');
 
 let isNewResponse = true;
-let cursorTimer = null;
-let qrTimer = null;
-let routeFallbackTimer = null;
-let qrGenerated = false;
 
-/* ── Cursor ── */
-function showCursor() {
-    if (!streamCursor) return;
-    streamCursor.classList.add('active');
-    clearTimeout(cursorTimer);
-    clearTimeout(qrTimer);
+let charQueue = [];
+let typeInterval = null;
+let currentSpan = null;
+let currentScrollEl = null;
+const CHAR_DELAY_MS = 18;
 
-    cursorTimer = setTimeout(() => {
-        streamCursor.classList.remove('active');
-        if (!routeView.classList.contains('hidden') && !qrGenerated) {
-            qrTimer = setTimeout(generateDirectionsQR, 400);
-        }
-    }, 1800);
+function startTyping() {
+    if (typeInterval) return;
+    typeInterval = setInterval(drainQueue, CHAR_DELAY_MS);
 }
 
-/* ── QR generation ── */
-function generateDirectionsQR() {
-    if (qrGenerated) return;
-    if (typeof html2canvas === 'undefined' || typeof bwipjs === 'undefined') {
-        console.warn('Aztec: libraries not loaded yet, retrying in 1s');
-        qrTimer = setTimeout(generateDirectionsQR, 1000);
+function drainQueue() {
+    if (charQueue.length === 0) {
+        clearInterval(typeInterval);
+        typeInterval = null;
+        if (streamCursor) streamCursor.classList.remove('active');
         return;
     }
 
-    html2canvas(routeView, {
-        scale: 1,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: '#090b14',
-        logging: false,
-    }).then(canvas => {
-        const shrinkCanvas = document.createElement('canvas');
-        const ctx = shrinkCanvas.getContext('2d');
-        const scaleFactor = 260 / canvas.width;
-        shrinkCanvas.width = 260;
-        shrinkCanvas.height = canvas.height * scaleFactor;
-        ctx.drawImage(canvas, 0, 0, shrinkCanvas.width, shrinkCanvas.height);
+    const ch = charQueue.shift();
 
-        const compressedImageBase64 = shrinkCanvas.toDataURL('image/jpeg', 0.15);
+    if (ch === '\n') {
+        currentSpan = null;
+    } else {
+        if (!currentSpan) {
+            currentSpan = document.createElement('span');
+            currentSpan.className = 'stream-line';
+            (output === currentScrollEl?.firstChild ? output : (currentSpan._target || output)).appendChild(currentSpan);
+        }
+        currentSpan.textContent += ch;
+    }
 
-        const aztecCanvas = document.createElement('canvas');
-        bwipjs.toCanvas(aztecCanvas, {
-            bcid: 'azteccode',
-            text: compressedImageBase64,
-            scale: 2,
-            backgroundcolor: 'ffffff',
-        });
-
-        qrContainer.innerHTML = '';
-        aztecCanvas.style.width = '200px';
-        aztecCanvas.style.height = '200px';
-        qrContainer.appendChild(aztecCanvas);
-
-        qrGenerated = true;
-        qrSection.classList.remove('hidden');
-    }).catch(err => {
-        console.warn('Aztec generation failed:', err);
-    });
+    if (currentScrollEl) {
+        currentScrollEl.scrollTop = currentScrollEl.scrollHeight;
+    }
 }
 
-function clearQR() {
-    qrContainer.innerHTML = '';
-    qrSection.classList.add('hidden');
-    qrGenerated = false;
-    clearTimeout(qrTimer);
-    clearTimeout(routeFallbackTimer);
+function enqueueText(text, targetEl, scrollEl) {
+    if (currentSpan && currentSpan._target !== targetEl) {
+        currentSpan = null;
+    }
+
+    if (!currentSpan || currentSpan._target !== targetEl) {
+        currentSpan = document.createElement('span');
+        currentSpan.className = 'stream-line';
+        currentSpan._target = targetEl;
+        targetEl.appendChild(currentSpan);
+    }
+
+    currentScrollEl = scrollEl;
+
+    for (const ch of text) {
+        charQueue.push(ch);
+    }
+
+    if (streamCursor) streamCursor.classList.add('active');
+    startTyping();
 }
 
-/* ── Stream listener ── */
+function flushQueue() {
+    clearInterval(typeInterval);
+    typeInterval = null;
+    charQueue = [];
+    currentSpan = null;
+    currentScrollEl = null;
+    if (streamCursor) streamCursor.classList.remove('active');
+}
+
 async function listenToStream() {
     try {
         const response = await fetch('/stream');
@@ -123,26 +116,26 @@ async function listenToStream() {
 
                 if (event.type === 'reset') {
                     isNewResponse = true;
+                    flushQueue();
                     routeView.classList.add('hidden');
                     displayArea.classList.remove('hidden');
-                    if (streamCursor) streamCursor.classList.remove('active');
-                    clearQR();
                     continue;
                 }
 
                 if (event.type === 'text') {
                     if (isNewResponse) {
                         output.innerHTML = '';
+                        currentSpan = null;
                         isNewResponse = false;
                     }
 
-                    if (routeView.classList.contains('hidden')) {
-                        appendText(event.data, output, document.querySelector('.stream-container'));
-                    } else {
-                        appendText(event.data, routeNarration, document.querySelector('.direction-panel'));
-                    }
+                    const inRoute = !routeView.classList.contains('hidden');
+                    const targetEl = inRoute ? routeNarration : output;
+                    const scrollEl = inRoute
+                        ? document.querySelector('.direction-panel')
+                        : document.querySelector('.stream-container');
 
-                    showCursor();
+                    enqueueText(event.data, targetEl, scrollEl);
                 }
             }
         }
@@ -152,21 +145,11 @@ async function listenToStream() {
     }
 }
 
-function appendText(text, targetEl = output, scrollEl = displayArea) {
-    let span = targetEl.lastElementChild;
-    if (!span || !span.classList.contains('stream-line')) {
-        span = document.createElement('span');
-        span.className = 'stream-line';
-        targetEl.appendChild(span);
-    }
-    span.textContent += text;
-    if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
-}
+let routeAnimTimer = null;
 
 function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
-    clearQR();
 
     const isMyanmar = data.displayLanguage === 'mm';
     const startName = data.startNameLocalized || data.startName;
@@ -188,11 +171,32 @@ function showRoute(data) {
     routeLine.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' '));
     routeMarkers.innerHTML = '';
     routeNarration.innerHTML = '';
+    currentSpan = null;
 
-    /* Fallback: generate QR 5s after route appears, in case no narration text comes */
-    routeFallbackTimer = setTimeout(() => {
-        if (!qrGenerated) generateDirectionsQR();
-    }, 5000);
+    animateRouteLine();
+}
+
+function animateRouteLine() {
+    clearTimeout(routeAnimTimer);
+    routeLine.classList.remove('drawing', 'flowing');
+    routeLine.style.strokeDasharray = '';
+    routeLine.style.strokeDashoffset = '';
+
+    const len = routeLine.getTotalLength();
+    routeLine.style.strokeDasharray = len;
+    routeLine.style.strokeDashoffset = len;
+
+    routeLine.getBoundingClientRect();
+
+    routeLine.classList.add('drawing');
+    routeLine.style.strokeDashoffset = '0';
+
+    routeAnimTimer = setTimeout(() => {
+        routeLine.classList.remove('drawing');
+        routeLine.style.strokeDasharray = '';
+        routeLine.style.strokeDashoffset = '';
+        routeLine.classList.add('flowing');
+    }, 1500);
 }
 
 listenToStream();

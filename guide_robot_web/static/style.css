@@ -28,14 +28,14 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-/* ── App wrapper ── */
+/* App wrapper */
 .app-wrapper {
     display: flex;
     height: 100%;
     width: 100%;
 }
 
-/* ── Display area ── */
+/* Display area */
 #display-area {
     flex: 1;
     display: flex;
@@ -47,7 +47,7 @@ body {
     overflow: hidden;
 }
 
-/* ── Display header ── */
+/* Display header */
 .display-header {
     display: flex;
     align-items: center;
@@ -70,7 +70,7 @@ body {
     text-transform: uppercase;
 }
 
-/* ── Pulse indicator ── */
+/* Pulse indicator */
 .robot-indicator {
     position: relative;
     width: 12px;
@@ -98,7 +98,7 @@ body {
     100% { transform: scale(1.8); opacity: 0; }
 }
 
-/* ── Stream container ── */
+/* Stream container */
 .stream-container {
     flex: 1;
     display: flex;
@@ -155,10 +155,10 @@ body {
     50%       { opacity: 0; }
 }
 
-/* ── Utility ── */
+/* Utility */
 .hidden { display: none !important; }
 
-/* ── Route view ── */
+/* Route view */
 #route-view {
     display: flex;
     width: 100vw;
@@ -258,6 +258,19 @@ body {
     filter: drop-shadow(0 0 7px rgba(79, 142, 247, 0.65));
 }
 
+#route-line.drawing {
+    transition: stroke-dashoffset 1.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#route-line.flowing {
+    stroke-dasharray: 22 14;
+    animation: dash-flow 0.65s linear infinite;
+}
+
+@keyframes dash-flow {
+    to { stroke-dashoffset: -36; }
+}
+
 .start-marker  { fill: #2dd4bf; }
 .path-marker   { fill: var(--accent); }
 .end-marker    { fill: #f87171; }
@@ -340,42 +353,4 @@ body {
     font-size: 19px;
     line-height: 1.6;
     font-weight: 500;
-}
-
-/* ── QR code section ── */
-.qr-section {
-    margin-top: 28px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-}
-
-.qr-divider {
-    width: 100%;
-    height: 1px;
-    background: var(--border);
-}
-
-.qr-label {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-dim);
-    letter-spacing: 1.8px;
-    text-transform: uppercase;
-    align-self: flex-start;
-}
-
-.qrcode-container {
-    background: #fff;
-    border-radius: 10px;
-    padding: 10px;
-    display: inline-flex;
-    animation: fadeIn 0.4s ease-out;
-}
-
-.qrcode-container img,
-.qrcode-container canvas {
-    display: block;
-    border-radius: 4px;
 }

@@ -122,7 +122,6 @@ PLACES = {
     "stadium": {"node": "stadium", "type": "facility", "aliases": ["sports ground", "football field"]},
 }
 
-
 def dijkstra(start_node):
     distances = {node: float("inf") for node in GRAPH}
     previous = {node: None for node in GRAPH}
@@ -144,7 +143,6 @@ def dijkstra(start_node):
 
     return distances, previous
 
-
 def reconstruct_path(previous, destination_node):
     path = []
     current = destination_node
@@ -154,7 +152,6 @@ def reconstruct_path(previous, destination_node):
         current = previous[current]
 
     return list(reversed(path))
-
 
 def determine_start_and_destination(sentence):
     pattern = r"(?:from\s+(.+?)\s+to\s+(.+?)|to\s+(.+?)\s+from\s+(.+?))(?:[?.!]|$)"
@@ -178,7 +175,6 @@ def determine_start_and_destination(sentence):
         return current_pos, destination
     
     return None, None
-
 
 def find_place(query):
     normalized = query.lower().strip()
@@ -206,7 +202,6 @@ def find_place(query):
                 return [start_match, destination_match]
 
     return None, None
-
 
 def route_to_place(query, start_node="entrance"):
     found_places = find_place(query)
@@ -245,7 +240,6 @@ def route_to_place(query, start_node="entrance"):
         "path": path,
         "points": [NODES[node] | {"id": node} for node in path],
     }
-
 
 def format_walking_time(seconds):
     if seconds < 60:

@@ -21,7 +21,6 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, VitsModel
 from bridge import reset_display, send_text, show_route
 from navigation import route_to_place
 
-
 MYANMAR_PLACE_NAMES = {
     "Main Entrance": "ပင်မဝင်ပေါက်",
     "Entrance B": "ဝင်ပေါက် ဘီ",
@@ -41,7 +40,6 @@ MYANMAR_PLACE_NAMES = {
 }
 
 MYANMAR_DIGITS = str.maketrans("0123456789.", "၀၁၂၃၄၅၆၇၈၉.")
-
 
 DB_PARAMS = {
     "dbname": "misaki_en",
@@ -96,7 +94,6 @@ tts_model = VitsModel.from_pretrained(TTS_MODEL_PATH)
 tts_tokenizer = AutoTokenizer.from_pretrained(TTS_MODEL_PATH)
 tts_sample_rate = getattr(tts_model.config, "sampling_rate", 16000)
 
-
 def audio_player():
     while True:
         chunk = audio_queue.get()
@@ -110,13 +107,10 @@ def audio_player():
 player_thread = threading.Thread(target=audio_player, daemon=True)
 player_thread.start()
 
-
 number_pattern = re.compile(r"\d+(\.\d+)?(?:,\d{3})*")
-
 
 def normalize_numwords(text):
     return text.replace(",", "").replace(" and ", " ")
-
 
 def numbers_to_words(text):
     def repl(match):
@@ -134,10 +128,8 @@ def numbers_to_words(text):
 
     return number_pattern.sub(repl, text)
 
-
 def to_myanmar_number(value):
     return str(value).translate(MYANMAR_DIGITS)
-
 
 def format_walking_time_mm(seconds):
     seconds_text = to_myanmar_number(seconds)
@@ -154,7 +146,6 @@ def format_walking_time_mm(seconds):
     remaining_text = to_myanmar_number(remaining_seconds)
     return f"{minutes_text} မိနစ် {remaining_text} စက္ကန့်"
 
-
 def translate(text, src_lang, target_lang):
     tokenizer.src_lang = src_lang
     inputs = tokenizer(text, return_tensors="pt").to(device)
@@ -165,10 +156,8 @@ def translate(text, src_lang, target_lang):
     )
     return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
 
-
 def connect_db():
     return psycopg.connect(**DB_PARAMS)
-
 
 def fetch_conversations():
     conn = connect_db()
@@ -177,7 +166,6 @@ def fetch_conversations():
         rows = cursor.fetchall()
     conn.close()
     return rows
-
 
 def store_conversations(prompt, response):
     try:
@@ -192,14 +180,12 @@ def store_conversations(prompt, response):
     except Exception as exc:
         print(Fore.YELLOW + f"Could not store conversation memory: {exc}")
 
-
 def remove_last_conversation():
     conn = connect_db()
     with conn.cursor() as cursor:
         cursor.execute("DELETE FROM conversations WHERE id = (SELECT MAX(id) FROM conversations)")
         conn.commit()
     conn.close()
-
 
 def create_vector_db(conversations):
     name = "conversations"
@@ -215,7 +201,6 @@ def create_vector_db(conversations):
             embedding = text_embed.create_embedding(text)["data"][0]["embedding"]
         collection.add(ids=[str(c["id"])], embeddings=[embedding], documents=[text])
 
-
 def retrieve_embeddings(queries, n_results=2):
     results_set = set()
     collection = client.get_collection(name="conversations")
@@ -229,7 +214,6 @@ def retrieve_embeddings(queries, n_results=2):
                 results_set.add(doc)
 
     return results_set
-
 
 def create_queries(prompt):
     query_msg = (
@@ -252,7 +236,6 @@ def create_queries(prompt):
     except Exception:
         return [prompt]
 
-
 def recall(prompt):
     try:
         queries = create_queries(prompt)
@@ -260,7 +243,6 @@ def recall(prompt):
         convo.append({"role": "user", "content": f"MEMORIES: {embeddings}\nUSER PROMPT: {prompt}"})
     except Exception as exc:
         print(Fore.YELLOW + f"Recall unavailable: {exc}")
-
 
 def text_chunker(token_stream):
     buffer = ""
@@ -275,13 +257,11 @@ def text_chunker(token_stream):
     if buffer.strip():
         yield buffer.strip()
 
-
 def generate_tts(text_chunk):
     inputs = tts_tokenizer(text_chunk, return_tensors="pt")
     with torch.no_grad():
         output = tts_model(**inputs).waveform
     return output.squeeze().cpu().numpy().astype(np.float32)
-
 
 def build_route_context(prompt):
     route = route_to_place(prompt)
@@ -310,7 +290,6 @@ def build_route_context(prompt):
         "Reply with exactly that sentence in natural English. "
         "Do not include labels like start=, destination=, distance=, or any internal node names."
     )
-
 
 def stream_and_tts(english_prompt, temperature=0.7):
     global convo
@@ -351,7 +330,6 @@ def stream_and_tts(english_prompt, temperature=0.7):
     english_response = response_text.strip()
     store_conversations(english_prompt, english_response)
     convo.append({"role": "assistant", "content": english_response})
-
 
 def handle_prompt(burmese_prompt):
     burmese_prompt = burmese_prompt.strip()

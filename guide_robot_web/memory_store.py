@@ -2,14 +2,13 @@ import json
 import os
 import re
 from pathlib import Path
-
 import chromadb
 import psycopg
 from llama_cpp import Llama
 from psycopg.rows import dict_row
 
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path.cwd()
 UNI_INFO_PATH = ROOT_DIR / "txt_files" / "uni_info"
 CHROMA_PATH = ROOT_DIR / "guide_robot_web" / ".chroma_memory"
 EMBEDDING_MODEL_PATH = "D:/models/nomic-embed-text-v1.5.Q6_K.gguf"
@@ -25,10 +24,8 @@ DB_PARAMS = {
 client = chromadb.PersistentClient(path=str(CHROMA_PATH))
 text_embed = None
 
-
 def connect_db():
     return psycopg.connect(**DB_PARAMS)
-
 
 def ensure_tables():
     conn = connect_db()
@@ -50,34 +47,30 @@ def ensure_tables():
         conn.commit()
     conn.close()
 
-
 def get_embedder():
     global text_embed
 
     if text_embed is None:
         text_embed = Llama(
             model_path=EMBEDDING_MODEL_PATH,
-            n_ctx=512,
+            n_ctx=2048,
             verbose=False,
             pooling_type=1,
             embedding=True,
+            n_gpu_layers=32
         )
 
     return text_embed
-
 
 def embed_text(text):
     response = get_embedder().create_embedding(text)
     return response["data"][0]["embedding"]
 
-
 def embed_texts(texts):
     return [embed_text(text) for text in texts]
 
-
 def _collection(name):
     return client.get_or_create_collection(name=name)
-
 
 def _reset_collection(name):
     try:
@@ -85,7 +78,6 @@ def _reset_collection(name):
     except Exception:
         pass
     return client.create_collection(name=name)
-
 
 def _flatten_json(value, prefix=""):
     chunks = []
@@ -105,7 +97,6 @@ def _flatten_json(value, prefix=""):
 
     return chunks
 
-
 def load_uni_chunks():
     raw = UNI_INFO_PATH.read_text(encoding="utf-8")
 
@@ -117,7 +108,6 @@ def load_uni_chunks():
         chunks = [section.strip() for section in sections if section.strip()]
 
     return [chunk for chunk in chunks if len(chunk) > 20]
-
 
 def populate_uni_info():
     collection = _reset_collection("uni_info")
@@ -134,7 +124,6 @@ def populate_uni_info():
     )
     return {"chunks": len(chunks)}
 
-
 def fetch_conversations():
     ensure_tables()
     conn = connect_db()
@@ -143,7 +132,6 @@ def fetch_conversations():
         rows = cursor.fetchall()
     conn.close()
     return rows
-
 
 def store_conversation(mode, original_prompt, english_prompt, english_response):
     ensure_tables()
@@ -164,7 +152,6 @@ def store_conversation(mode, original_prompt, english_prompt, english_response):
     add_conversation_embedding(row["id"], english_prompt, english_response)
     return row["id"]
 
-
 def add_conversation_embedding(conversation_id, english_prompt, english_response):
     collection = _collection("conversations")
     document = f"prompt: {english_prompt}\nresponse: {english_response}"
@@ -174,7 +161,6 @@ def add_conversation_embedding(conversation_id, english_prompt, english_response
         documents=[document],
         metadatas=[{"source": "conversation"}],
     )
-
 
 def rebuild_conversation_embeddings():
     collection = _reset_collection("conversations")
@@ -191,7 +177,6 @@ def rebuild_conversation_embeddings():
     )
     return {"conversations": len(rows)}
 
-
 def retrieve_context(english_prompt, uni_results=10, memory_results=5):
     result = {"uni_context": [], "memory_context": []}
 
@@ -207,7 +192,6 @@ def retrieve_context(english_prompt, uni_results=10, memory_results=5):
             result[key] = []
 
     return result
-
 
 def remove_last_conversation():
     ensure_tables()
@@ -229,7 +213,6 @@ def remove_last_conversation():
 
     return {"deleted": conversation_id}
 
-
 def clear_conversations():
     ensure_tables()
     conn = connect_db()
@@ -240,13 +223,11 @@ def clear_conversations():
     _reset_collection("conversations")
     return {"cleared": True}
 
-
 def add_manual_memory(text):
     text = text.strip()
     if not text:
         raise ValueError("memory text is required")
     return store_conversation("admin", text, text, "Memory stored.")
-
 
 def status():
     ensure_tables()
