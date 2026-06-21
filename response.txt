@@ -1,5 +1,43 @@
-[UNK]
-[UNK]
-[UNK]
-[UNK]
-[UNK]
+#include <Arduino.h>
+#include <ESP32Servo.h>
+
+
+//eyes(45-135)-(left-right)
+//eye lids(90-110)(close-open)
+const int SERVO_PIN_1 = 13;
+const int SERVO_PIN_2 = 12;
+
+Servo myServo1;
+Servo myServo2;
+
+int currentAngle = 90; 
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Allocate a hardware timer for the ESP32 PWM
+  ESP32PWM::allocateTimer(0);
+  
+  myServo1.setPeriodHertz(50);
+  myServo1.attach(SERVO_PIN_1, 500, 2400);
+
+  //myServo2.setPeriodHertz(50);
+  //myServo2.attach(SERVO_PIN_2, 500, 2400);
+  
+  myServo1.write(currentAngle);
+  //myServo2.write(currentAngle);
+
+}
+
+void loop() {
+  //myServo1.write(110);
+  //myServo2.write(135);
+  //delay(1500);
+  myServo1.write(90);
+  //myServo2.write(90);
+  delay(1500);
+  //myServo1.write(45);
+  //myServo2.write(45);
+  //delay(1500);
+
+}

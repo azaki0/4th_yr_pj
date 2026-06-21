@@ -12,7 +12,19 @@ const mapTime = document.getElementById('map-time');
 const routeHeading = document.querySelector('.direction-panel h3');
 const streamCursor = document.getElementById('stream-cursor');
 
+const micBtn = document.getElementById('mic-btn');
+const listeningOverlay = document.getElementById('listening-overlay');
+const transcriptPanel = document.getElementById('voice-transcript-panel');
+const transcriptList = document.getElementById('transcript-list');
+const modeButtons = document.querySelectorAll('.display-mode-button');
+const mmControlPanel = document.getElementById('mm-control-panel');
+const mmTextForm = document.getElementById('mm-text-form');
+const mmTextInput = document.getElementById('mm-text-input');
+const mmActionButtons = document.querySelectorAll('[data-mm-action]');
+
 let isNewResponse = true;
+let isResponding = false;
+let currentLanguage = 'en';
 
 let charQueue = [];
 let typeInterval = null;
@@ -20,6 +32,136 @@ let currentSpan = null;
 let currentScrollEl = null;
 const CHAR_DELAY_MS = 18;
 
+// --- Voice state ---
+let isListening = false;
+
+// --- Mode check ---
+async function fetchMode() {
+    try {
+        const r = await fetch('/api/mode');
+        const data = await r.json();
+        currentLanguage = data.language || 'en';
+    } catch {}
+    updateMicVisibility();
+    renderMode();
+}
+
+function renderMode() {
+    modeButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.mode === currentLanguage);
+    });
+    mmControlPanel.classList.toggle('hidden', currentLanguage !== 'mm' || isResponding);
+}
+
+function updateMicVisibility() {
+    if (currentLanguage !== 'en' || isResponding) {
+        micBtn.classList.add('hidden');
+    } else {
+        micBtn.classList.remove('hidden');
+    }
+    if (mmControlPanel) {
+        mmControlPanel.classList.toggle('hidden', currentLanguage !== 'mm' || isResponding);
+    }
+}
+
+// --- Transcript ---
+function addTranscript(text) {
+    if (!routeView.classList.contains('hidden')) return;
+    transcriptPanel.classList.remove('hidden');
+    const entry = document.createElement('div');
+    entry.className = 'transcript-entry';
+    entry.textContent = text;
+    transcriptList.appendChild(entry);
+    transcriptList.scrollTop = transcriptList.scrollHeight;
+}
+
+// --- Push-to-talk ---
+micBtn.addEventListener('click', async () => {
+    if (isListening || isResponding) return;
+    isListening = true;
+    micBtn.classList.add('hidden');
+    listeningOverlay.classList.remove('hidden');
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 36000);
+        const r = await fetch('/api/capture-voice', {
+            method: 'POST',
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await r.json();
+        if (data.text) {
+            addTranscript(data.text);
+        }
+    } catch {}
+
+    listeningOverlay.classList.add('hidden');
+    isListening = false;
+    updateMicVisibility();
+});
+
+async function setMode(language) {
+    currentLanguage = language;
+    renderMode();
+    updateMicVisibility();
+
+    const response = await fetch('/api/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language }),
+    });
+
+    if (!response.ok) {
+        currentLanguage = language === 'en' ? 'mm' : 'en';
+        renderMode();
+        updateMicVisibility();
+    }
+}
+
+async function sendPrompt(prompt) {
+    const clean = prompt.trim();
+    if (!clean || isResponding) return;
+
+    await fetch('/api/prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: clean, language: currentLanguage }),
+    });
+}
+
+modeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        if (button.dataset.mode !== currentLanguage) {
+            setMode(button.dataset.mode);
+        }
+    });
+});
+
+mmTextForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendPrompt(mmTextInput.value);
+    mmTextInput.value = '';
+});
+
+mmActionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        const action = button.dataset.mmAction;
+        if (action === 'navigation') {
+            const destination = mmTextInput.value.trim();
+            if (!destination) {
+                mmTextInput.focus();
+                return;
+            }
+            sendPrompt(`${destination} ကို သွားချင်ပါတယ်။ လမ်းညွှန်ပေးပါ။`);
+            mmTextInput.value = '';
+        } else if (action === 'overview') {
+            sendPrompt('NSPU အကြောင်း အကျဉ်းချုပ် ပြောပြပါ။');
+        }
+    });
+});
+
+// --- Typing engine ---
 function startTyping() {
     if (typeInterval) return;
     typeInterval = setInterval(drainQueue, CHAR_DELAY_MS);
@@ -82,6 +224,7 @@ function flushQueue() {
     if (streamCursor) streamCursor.classList.remove('active');
 }
 
+// --- Stream ---
 async function listenToStream() {
     try {
         const response = await fetch('/stream');
@@ -116,9 +259,12 @@ async function listenToStream() {
 
                 if (event.type === 'reset') {
                     isNewResponse = true;
+                    isResponding = true;
+                    updateMicVisibility();
                     flushQueue();
                     routeView.classList.add('hidden');
                     displayArea.classList.remove('hidden');
+                    transcriptPanel.classList.remove('route-mode');
                     continue;
                 }
 
@@ -137,6 +283,11 @@ async function listenToStream() {
 
                     enqueueText(event.data, targetEl, scrollEl);
                 }
+
+                if (event.type === 'memory' || event.type === 'done') {
+                    isResponding = false;
+                    updateMicVisibility();
+                }
             }
         }
     } catch (error) {
@@ -150,6 +301,7 @@ let routeAnimTimer = null;
 function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
+    transcriptPanel.classList.add('hidden');
 
     const isMyanmar = data.displayLanguage === 'mm';
     const startName = data.startNameLocalized || data.startName;
@@ -199,4 +351,5 @@ function animateRouteLine() {
     }, 1500);
 }
 
+fetchMode();
 listenToStream();

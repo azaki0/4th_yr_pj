@@ -28,5 +28,5 @@ if __name__ == '__main__':
 
     threading.Thread(target=run_medical_agent, daemon=True).start()
     
-    print("--- Flask Server Starting on Port 5000 ---")
+    print("Flask Server Starting on Port 5000")
     app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)

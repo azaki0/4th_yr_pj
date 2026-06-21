@@ -54,7 +54,7 @@
             <header class="topbar">
                 <div class="topbar-left">
                     <h1 class="page-title">Control Panel</h1>
-                    <p class="page-sub">Guide Robot Administration</p>
+                    <p class="page-sub">Guide Robot Admin Panel</p>
                 </div>
                 <div class="topbar-right">
                     <div class="db-badge" id="database-status">-- uni chunks | -- memories</div>
@@ -70,7 +70,7 @@
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                             </div>
                             <div>
-                                <div class="card-title">Language Mode</div>
+                                <div class="card-title">Language</div>
                                 <div class="card-sub">Active conversation language</div>
                             </div>
                         </div>
@@ -108,12 +108,28 @@
 
                 <div class="card card--full">
                     <div class="card-header">
+                        <div class="card-icon card-icon--green">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="m17 5-5-3-5 3"/><path d="m17 19-5 3-5-3"/><path d="M2 12h20"/><path d="m5 7-3 5 3 5"/><path d="m19 7 3 5-3 5"/></svg>
+                        </div>
+                        <div>
+                            <div class="card-title">Model Loader</div>
+                            <div class="card-sub">Preload local TTS and Kaggle models</div>
+                        </div>
+                    </div>
+                    <div class="model-loader-row">
+                        <button type="button" class="btn btn-primary" id="load-models-btn">Load Models</button>
+                        <div class="model-load-status" id="model-load-status">Not loaded</div>
+                    </div>
+                </div>
+
+                <div class="card card--full">
+                    <div class="card-header">
                         <div class="card-icon card-icon--teal">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                         </div>
                         <div>
                             <div class="card-title">Send Prompt</div>
-                            <div class="card-sub">Inject text directly to the robot</div>
+                            <div class="card-sub">Send text directly to the robot</div>
                         </div>
                     </div>
                     <form id="prompt-form" class="prompt-form">

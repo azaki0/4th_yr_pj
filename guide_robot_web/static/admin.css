@@ -243,6 +243,7 @@ a { text-decoration: none; color: inherit; }
 .card-icon--purple { background: rgba(124, 106, 247, 0.15); color: var(--accent-purple); }
 .card-icon--teal   { background: rgba(45, 212, 191, 0.12); color: var(--accent-teal); }
 .card-icon--orange { background: rgba(251, 146, 60, 0.12); color: var(--accent-orange); }
+.card-icon--green  { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
 
 .card-title {
     font-size: 14px;
@@ -386,6 +387,12 @@ a { text-decoration: none; color: inherit; }
     background: #3d7ef5;
 }
 
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .btn-send {
     background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
     color: #fff;
@@ -425,6 +432,20 @@ a { text-decoration: none; color: inherit; }
 .input-row .text-input {
     flex: 1;
     min-width: 0;
+}
+
+/* Model loader */
+.model-loader-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.model-load-status {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
 }
 
 /* Prompt form */

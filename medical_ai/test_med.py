@@ -12,7 +12,7 @@ import sounddevice as sd
 import json
 import threading
 from medical_ai.bridge import text_display_queue
-from codes.silero import VoiceTranscriber
+from guide_robot_web.silero import VoiceTranscriber
 import serial
 
 try:

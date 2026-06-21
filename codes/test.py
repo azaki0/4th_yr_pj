@@ -1,12 +1,13 @@
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import torch
-from codes.burmese_syntax_corrector import correct_english_to_burmese_blueprint
+from burmese_syntax_corrector import correct_english_to_burmese_blueprint
 
 TRANSLATER_MODEL_PATH = r"D:\models\nllb-200-distilled-600M"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-tokenizer = AutoTokenizer.from_pretrained(TRANSLATER_MODEL_PATH)
-model = AutoModelForSeq2SeqLM.from_pretrained(TRANSLATER_MODEL_PATH).to(device)
+print(device)
+#tokenizer = AutoTokenizer.from_pretrained(TRANSLATER_MODEL_PATH)
+#model = AutoModelForSeq2SeqLM.from_pretrained(TRANSLATER_MODEL_PATH).to(device)
 
 text = "NVIDIA is one of the most important technology companies in the world, best known for designing powerful graphics processing units, or GPUs, that are used in gaming, creative work, scientific computing, artificial intelligence, robotics, and data centers. The company started by focusing on computer graphics, but over time its GPUs became useful for much more than rendering images because they can process many calculations in parallel. This made NVIDIA hardware especially valuable for training and running modern AI models, including large language models, computer vision systems, speech recognition tools, and autonomous machine applications. NVIDIA also provides software platforms such as CUDA, which allows developers and researchers to write programs that use GPU acceleration efficiently. Today, NVIDIA plays a major role in the AI industry because many companies, universities, and research labs rely on its chips and tools to build faster, more capable intelligent systems."
 

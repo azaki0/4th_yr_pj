@@ -11,7 +11,8 @@ from memory_store import (
     remove_last_conversation,
     status as memory_status,
 )
-from remote_agent_client import get_config, handle_prompt, set_config
+from remote_agent_client import get_config, handle_prompt, preload_models, set_config
+from voice_input import capture as capture_voice, preload as preload_voice
 
 app = Flask(__name__)
 prompt_queue = Queue()
@@ -37,15 +38,28 @@ def mode():
 
     return jsonify(current_mode)
 
+@app.route("/api/capture-voice", methods=["POST"])
+def submit_voice():
+    if current_mode["language"] != "en":
+        return jsonify({"error": "voice input is only available in English mode"}), 400
+
+    text = capture_voice(timeout=30)
+    if text:
+        prompt_queue.put({"language": "en", "prompt": text})
+    return jsonify({"text": text, "queued": bool(text)})
+
 @app.route("/api/prompt", methods=["POST"])
 def submit_prompt():
     data = request.get_json(silent=True) or {}
     prompt = data.get("prompt", "").strip()
+    language = data.get("language", current_mode["language"]).lower()
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
+    if language not in {"en", "mm"}:
+        return jsonify({"error": "language must be en or mm"}), 400
 
-    prompt_queue.put({"language": current_mode["language"], "prompt": prompt})
-    return jsonify({"queued": True, "language": current_mode["language"]})
+    prompt_queue.put({"language": language, "prompt": prompt})
+    return jsonify({"queued": True, "language": language})
 
 @app.route("/api/remote", methods=["GET", "POST"])
 def remote_config():
@@ -81,6 +95,19 @@ def admin_db():
 
     result["status"] = memory_status()
     return jsonify(result)
+
+@app.route("/api/admin/models/load", methods=["POST"])
+def load_models():
+    try:
+        result = preload_models()
+        try:
+            result["voice"] = preload_voice()
+        except Exception as exc:
+            result["voice"] = {"ok": False, "error": str(exc)}
+        result["ok"] = bool(result.get("ok")) and bool(result["voice"].get("ok"))
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 @app.route("/stream")
 def stream():

@@ -8,6 +8,8 @@ const databaseButtons = document.querySelectorAll('[data-db-command]');
 const manualMemoryForm = document.getElementById('manual-memory-form');
 const manualMemory = document.getElementById('manual-memory');
 const adminStatus = document.getElementById('admin-status');
+const loadModelsBtn = document.getElementById('load-models-btn');
+const modelLoadStatus = document.getElementById('model-load-status');
 
 let currentMode = 'en';
 
@@ -62,6 +64,17 @@ async function runDatabaseCommand(command, text = '') {
     setStatus('Database command complete.');
 }
 
+function formatModelResult(label, result) {
+    if (!result) return `${label}: no response`;
+    if (result.ok) {
+        const loaded = (result.loaded || []).join(', ') || 'ready';
+        return `${label}: ${loaded}`;
+    }
+
+    const errorText = result.error || Object.values(result.errors || {}).join('; ') || 'failed';
+    return `${label}: ${errorText}`;
+}
+
 modeButtons.forEach((button) => {
     button.addEventListener('click', async () => {
         const language = button.dataset.mode;
@@ -99,6 +112,39 @@ remoteForm.addEventListener('submit', async (event) => {
     }
 
     setStatus('Kaggle URL saved.');
+});
+
+loadModelsBtn.addEventListener('click', async () => {
+    loadModelsBtn.disabled = true;
+    modelLoadStatus.textContent = 'Loading local and Kaggle models...';
+    setStatus('Loading models...');
+
+    try {
+        const response = await fetch('/api/admin/models/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await response.json();
+
+        modelLoadStatus.textContent = [
+            formatModelResult('Local', data.local),
+            formatModelResult('Voice', data.voice),
+            formatModelResult('Kaggle', data.kaggle),
+        ].join(' | ');
+
+        if (!response.ok || !data.ok) {
+            setStatus(data.error || 'Some models failed to load.');
+            return;
+        }
+
+        setStatus('Models loaded.');
+    } catch (error) {
+        modelLoadStatus.textContent = 'Model load request failed.';
+        setStatus('Model load request failed.');
+    } finally {
+        loadModelsBtn.disabled = false;
+    }
 });
 
 databaseButtons.forEach((button) => {

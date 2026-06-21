@@ -1,17 +1,16 @@
-import base64
 import json
 import os
 import re
 import threading
 import warnings
-import numpy as np
+
 import torch
 from flask import Flask, Response, jsonify, request, stream_with_context
 from huggingface_hub import HfApi, hf_hub_download
-from kokoro import KPipeline
 from llama_cpp import Llama
 from num2words import num2words
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, VitsModel
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+
 from navigation import route_to_place
 
 
@@ -24,13 +23,13 @@ QWEN_MODEL_PATH_EN = os.getenv("QWEN_MODEL_PATH_EN", "")
 QWEN_MODEL_PATH_MM = os.getenv("QWEN_MODEL_PATH_MM", "")
 QWEN_MODEL_REPO_EN = os.getenv("QWEN_MODEL_REPO_EN", "Qwen/Qwen2.5-7B-Instruct-GGUF")
 QWEN_MODEL_REPO_MM = os.getenv("QWEN_MODEL_REPO_MM", QWEN_MODEL_REPO_EN)
-QWEN_MODEL_FILE_EN = os.getenv("QWEN_MODEL_FILE_EN", "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf")
+QWEN_MODEL_FILE_EN = os.getenv("QWEN_MODEL_FILE_EN", "qwen2.5-7b-instruct-q8_0-00001-of-00003.gguf")
 QWEN_MODEL_FILE_MM = os.getenv("QWEN_MODEL_FILE_MM", QWEN_MODEL_FILE_EN)
 TRANSLATER_MODEL_PATH = os.getenv("TRANSLATER_MODEL_PATH", "")
 TRANSLATER_MODEL_ID = os.getenv("TRANSLATER_MODEL_ID", "facebook/nllb-200-distilled-1.3B")
-VITS_MODEL_PATH = os.getenv("VITS_MODEL_PATH", "")
-VITS_MODEL_ID = os.getenv("VITS_MODEL_ID", "facebook/mms-tts-mya")
 N_GPU_LAYERS = int(os.getenv("LLAMA_N_GPU_LAYERS", "32"))
+LLM_GPU_INDEX = 0
+PIPELINE_DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"
 
 MYANMAR_PLACE_NAMES = {
     "Main Entrance": "ပင်မဝင်ပေါက်",
@@ -51,14 +50,18 @@ MYANMAR_PLACE_NAMES = {
 }
 
 MYANMAR_DIGITS = str.maketrans("0123456789.", "၀၁၂၃၄၅၆၇၈၉.")
-number_pattern = re.compile(r"\d+(\.\d+)?(?:,\d{3})*")
+number_pattern = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 model_lock = threading.Lock()
 
 system_prompt = (
     "You are a friendly university guide robot. "
-    "Give concise spoken answers. "
-    "When route information has already been shown on the robot display, explain the route naturally. "
-    "Do not make up classroom or facility locations that are not provided."
+    "Give concise spoken answers, usually one to three short sentences. "
+    "If the user asks for an overview, summarize the key points instead of listing every stored fact. "
+    "For direction or route questions, only use route information produced by the navigation system. "
+    "Never invent building names, turns, gates, classrooms, or routes. "
+    "Below the user's prompt you will see reference information under headings like "
+    "\"UNIVERSITY INFORMATION\" or \"RELEVANT CONVERSATION MEMORY\". "
+    "Use that information to answer the question, but do NOT repeat it verbatim."
 )
 
 conversations = {
@@ -70,10 +73,6 @@ print("Kaggle guide robot server starting. Models load on first use.")
 llm_en = None
 translator_tokenizer = None
 translator_model = None
-vits_model = None
-vits_tokenizer = None
-kokoro_pipeline = None
-vits_sample_rate = 16000
 
 def resolve_hf_model(local_path, model_id):
     return local_path if local_path and os.path.exists(local_path) else model_id
@@ -137,8 +136,9 @@ def get_llm(language):
         repo_id = QWEN_MODEL_REPO_MM if language == "mm" else QWEN_MODEL_REPO_EN
         filename = QWEN_MODEL_FILE_MM if language == "mm" else QWEN_MODEL_FILE_EN
         model_path = resolve_gguf_path(local_path, repo_id, filename)
-        llm_en = Llama(model_path=model_path, n_ctx=4096, n_gpu_layers=N_GPU_LAYERS, verbose=False)
+        llm_en = Llama(model_path=model_path, n_ctx=4096, n_gpu_layers=N_GPU_LAYERS, main_gpu=LLM_GPU_INDEX, verbose=False)
     return llm_en
+
 
 def get_translator():
     global translator_tokenizer, translator_model
@@ -146,32 +146,11 @@ def get_translator():
     if translator_tokenizer is None or translator_model is None:
         model_name = resolve_hf_model(TRANSLATER_MODEL_PATH, TRANSLATER_MODEL_ID)
         translator_tokenizer = AutoTokenizer.from_pretrained(model_name)
-        translator_model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        translator_model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(PIPELINE_DEVICE)
 
     return translator_tokenizer, translator_model
 
-def get_vits():
-    global vits_model, vits_tokenizer, vits_sample_rate
-
-    if vits_model is None or vits_tokenizer is None:
-        model_name = resolve_hf_model(VITS_MODEL_PATH, VITS_MODEL_ID)
-        vits_model = VitsModel.from_pretrained(model_name)
-        vits_tokenizer = AutoTokenizer.from_pretrained(model_name)
-        vits_sample_rate = getattr(vits_model.config, "sampling_rate", 16000)
-
-    return vits_model, vits_tokenizer, vits_sample_rate
-
-def get_kokoro():
-    global kokoro_pipeline
-
-    if kokoro_pipeline is None:
-        kokoro_pipeline = KPipeline(lang_code="a", device="cuda" if torch.cuda.is_available() else "cpu")
-
-    return kokoro_pipeline
-
 tokenizer, model = get_translator()
-pipeline = get_kokoro()
-vit_model, vit_tokenizer, sample_rate = get_vits()
 llm = get_llm("en")
 
 def authorized():
@@ -221,7 +200,7 @@ def format_walking_time_mm(seconds):
 def translate(text, src_lang, target_lang):
     
     tokenizer.src_lang = src_lang
-    inputs = tokenizer(text, return_tensors="pt")
+    inputs = tokenizer(text, return_tensors="pt").to(model.device)
     generated_tokens = model.generate(
         **inputs,
         forced_bos_token_id=tokenizer.convert_tokens_to_ids(target_lang),
@@ -241,30 +220,6 @@ def text_chunker(token_stream):
 
     if buffer.strip():
         yield buffer.strip()
-
-def kokoro_tts(text):
-    wav = None
-    
-    for _, _, audio in pipeline(text=text, voice="af_heart", speed=1.0, split_pattern=r"\n+"):
-        wav = audio
-    if wav is None:
-        return None
-    return np.asarray(wav, dtype=np.float32), 24000
-
-def vits_tts(text):
-    
-    inputs = vit_tokenizer(text, return_tensors="pt")
-    with torch.no_grad():
-        output = vit_model(**inputs).waveform
-    return output.squeeze().cpu().numpy().astype(np.float32), sample_rate
-
-def audio_event(audio, sample_rate):
-    return event(
-        "audio",
-        base64.b64encode(audio.tobytes()).decode("ascii"),
-        sampleRate=sample_rate,
-        dtype=str(audio.dtype),
-    )
 
 def localize_route(route, language):
     if language != "mm":
@@ -320,6 +275,56 @@ def format_context(title, chunks):
     joined = "\n\n".join(f"- {chunk}" for chunk in clean_chunks)
     return f"{title}:\n{joined}\n\n"
 
+def is_overview_question(text):
+    normalized = text.lower()
+    overview_terms = ["overview", "brief", "summary", "summarize", "tell me about", "what is nspu", "about nspu"]
+    return any(term in normalized for term in overview_terms)
+
+def is_route_question(text):
+    normalized = text.lower()
+    route_terms = [
+        "direction", "directions", "route", "path", "way to", "how do i get",
+        "how to get", "go to", "walk to", "take me to", "where is",
+    ]
+    return any(term in normalized for term in route_terms)
+
+def trim_context(chunks, limit=3, max_chars=420):
+    trimmed = []
+    for chunk in chunks:
+        if not isinstance(chunk, str):
+            continue
+        chunk = re.sub(r"\s+", " ", chunk).strip()
+        if not chunk:
+            continue
+        trimmed.append(chunk[:max_chars])
+        if len(trimmed) >= limit:
+            break
+    return trimmed
+
+def localized_response_events(response_text, language):
+    if language == "mm":
+        display_text = translate(numbers_to_words(response_text), "eng_Latn", "mya_Mymr")
+        return [
+            event("text", display_text + " "),
+            event("speech", display_text, language="mm"),
+        ]
+    return [
+        event("text", response_text + " "),
+        event("speech", response_text, language="en"),
+    ]
+
+def emit_answer(sentence, language):
+    if language == "mm":
+        display_sentence = translate(numbers_to_words(sentence), "eng_Latn", "mya_Mymr")
+        return [
+            event("text", display_sentence + " "),
+            event("speech", display_sentence, language="mm"),
+        ]
+    return [
+        event("text", sentence + " "),
+        event("speech", sentence, language="en"),
+    ]
+
 def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_context=None):
     yield event("reset")
 
@@ -327,32 +332,76 @@ def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_con
     route, route_context = build_route_context(english_prompt, language)
     if route:
         yield event("route", route)
-
-    context_prefix = (
-        format_context("UNIVERSITY INFORMATION", uni_context or [])
-        + format_context("RELEVANT CONVERSATION MEMORY", memory_context or [])
-    )
+    elif is_route_question(english_prompt):
+        known_places = "Main Entrance, Entrance B, Main Building, Workshop, Teacher Dormitories A to D, View Point, Boys Dormitories A and B, Canteen, Girls Dormitory, and Stadium"
+        response_text = (
+            "I could not match that destination on the campus map. "
+            f"Please say one of these places: {known_places}."
+        )
+        for response_event in localized_response_events(response_text, language):
+            yield response_event
+        yield event(
+            "memory",
+            {
+                "english_prompt": english_prompt,
+                "english_response": response_text,
+            },
+        )
+        return
 
     if route_context:
-        prompt_for_llm = f"{context_prefix}{route_context}\nUSER PROMPT: {english_prompt}"
+        prompt_for_llm = (
+            "Answer rule: generate one short spoken sentence using only this route fact. "
+            "Do not add turns, floors, elevators, landmarks, or extra directions. "
+            "Use simple English for translation.\n"
+            f"{route_context}\nUSER PROMPT: {english_prompt}"
+        )
     else:
-        prompt_for_llm = f"{context_prefix}USER PROMPT: {english_prompt}" if context_prefix else english_prompt
+        uni_limit = 2 if is_overview_question(english_prompt) else 4
+        memory_limit = 1 if is_overview_question(english_prompt) else 2
+        context_blocks = (
+            format_context("UNIVERSITY INFORMATION", trim_context(uni_context or [], limit=uni_limit))
+            + format_context("RELEVANT CONVERSATION MEMORY", trim_context(memory_context or [], limit=memory_limit))
+        )
+
+    if route_context:
+        pass
+    elif context_blocks:
+        answer_rule = (
+            "Answer rule: give a brief spoken overview in at most three sentences. "
+            "Use only the reference information. Use simple English for translation. "
+            "Do not enumerate every reference item.\n"
+            if is_overview_question(english_prompt)
+            else "Answer rule: answer briefly using only relevant reference facts. Use simple English for translation.\n"
+        )
+        prompt_for_llm = (
+            answer_rule
+            +
+            "[Reference information to use for answering, do not repeat it]\n"
+            f"{context_blocks}"
+            f"[End of reference information]\n\n"
+            f"USER PROMPT: {english_prompt}"
+        )
+    else:
+        response_text = "I do not have that information in my university knowledge base."
+        for response_event in localized_response_events(response_text, language):
+            yield response_event
+        yield event(
+            "memory",
+            {
+                "english_prompt": english_prompt,
+                "english_response": response_text,
+            },
+        )
+        return
 
     response_text = ""
 
     for sentence in text_chunker(stream_completion(prompt_for_llm, language)):
         response_text += sentence + " "
 
-        if language == "mm":
-            display_sentence = translate(numbers_to_words(sentence), "eng_Latn", "mya_Mymr")
-            yield event("text", display_sentence + " ")
-            audio, sample_rate = vits_tts(display_sentence)
-        else:
-            yield event("text", sentence + " ")
-            audio, sample_rate = kokoro_tts(sentence)
-
-        if audio is not None:
-            yield audio_event(audio, sample_rate)
+        for response_event in emit_answer(sentence, language):
+            yield response_event
 
     english_response = response_text.strip()
     conversations[language].append({"role": "assistant", "content": english_response})
@@ -367,6 +416,28 @@ def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_con
 @app.route("/health")
 def health():
     return jsonify({"ok": True})
+
+@app.route("/models/load", methods=["POST"])
+def load_models():
+    if not authorized():
+        return jsonify({"error": "unauthorized"}), 401
+
+    loaded = []
+    errors = {}
+
+    try:
+        get_translator()
+        loaded.append("translator")
+    except Exception as exc:
+        errors["translator"] = str(exc)
+
+    try:
+        get_llm("en")
+        loaded.append("llm")
+    except Exception as exc:
+        errors["llm"] = str(exc)
+
+    return jsonify({"ok": not errors, "loaded": loaded, "errors": errors})
 
 @app.route("/chat/stream", methods=["POST"])
 def chat_stream():
