@@ -3,16 +3,13 @@ import os
 import re
 import threading
 import warnings
-
 import torch
 from flask import Flask, Response, jsonify, request, stream_with_context
 from huggingface_hub import HfApi, hf_hub_download
 from llama_cpp import Llama
 from num2words import num2words
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-
+from transformers import AutoProcessor, SeamlessM4Tv2Model
 from navigation import route_to_place
-
 
 app = Flask(__name__)
 warnings.filterwarnings("ignore")
@@ -26,10 +23,16 @@ QWEN_MODEL_REPO_MM = os.getenv("QWEN_MODEL_REPO_MM", QWEN_MODEL_REPO_EN)
 QWEN_MODEL_FILE_EN = os.getenv("QWEN_MODEL_FILE_EN", "qwen2.5-7b-instruct-q8_0-00001-of-00003.gguf")
 QWEN_MODEL_FILE_MM = os.getenv("QWEN_MODEL_FILE_MM", QWEN_MODEL_FILE_EN)
 TRANSLATER_MODEL_PATH = os.getenv("TRANSLATER_MODEL_PATH", "")
-TRANSLATER_MODEL_ID = os.getenv("TRANSLATER_MODEL_ID", "facebook/nllb-200-distilled-1.3B")
+TRANSLATER_MODEL_ID = os.getenv("TRANSLATER_MODEL_ID", "facebook/seamless-m4t-v2-large")
 N_GPU_LAYERS = int(os.getenv("LLAMA_N_GPU_LAYERS", "32"))
 LLM_GPU_INDEX = 0
 PIPELINE_DEVICE = "cuda:1" if torch.cuda.is_available() else "cpu"
+SEAMLESS_LANGS = {
+    "mya_Mymr": "mya",
+    "eng_Latn": "eng",
+    "mya": "mya",
+    "eng": "eng",
+}
 
 MYANMAR_PLACE_NAMES = {
     "Main Entrance": "ပင်မဝင်ပေါက်",
@@ -69,9 +72,9 @@ conversations = {
     "mm": [{"role": "system", "content": system_prompt}],
 }
 
-print("Kaggle guide robot server starting. Models load on first use.")
+print("Kaggle server starting")
 llm_en = None
-translator_tokenizer = None
+translator_processor = None
 translator_model = None
 
 def resolve_hf_model(local_path, model_id):
@@ -82,18 +85,14 @@ def resolve_gguf_path(local_path, repo_id, filename):
         return local_path
 
     if local_path:
-        print(f"Model path not found, downloading instead: {local_path}")
+        print(f"Model path not found, Downloading: {local_path}")
 
     api = HfApi()
     repo_files = api.list_repo_files(repo_id)
 
     split_match = re.match(r"(.+)-\d{5}-of-\d{5}\.gguf$", filename)
     split_prefix = split_match.group(1) if split_match else filename.removesuffix(".gguf")
-    split_files = sorted(
-        file
-        for file in repo_files
-        if re.match(rf"{re.escape(split_prefix)}-\d{{5}}-of-\d{{5}}\.gguf$", file)
-    )
+    split_files = sorted(file for file in repo_files if re.match(rf"{re.escape(split_prefix)}-\d{{5}}-of-\d{{5}}\.gguf$", file))
 
     if split_files:
         print(f"Downloading split GGUF for {repo_id}: {', '.join(split_files)}")
@@ -108,11 +107,7 @@ def resolve_gguf_path(local_path, repo_id, filename):
         return hf_hub_download(repo_id=repo_id, filename=filename, cache_dir=MODEL_CACHE_DIR)
 
     quant_name = filename.removesuffix(".gguf").lower()
-    candidates = sorted(
-        file
-        for file in repo_files
-        if file.lower().endswith(".gguf") and quant_name in file.lower()
-    )
+    candidates = sorted(file for file in repo_files if file.lower().endswith(".gguf") and quant_name in file.lower())
 
     if candidates:
         split_candidates = [
@@ -136,22 +131,19 @@ def get_llm(language):
         repo_id = QWEN_MODEL_REPO_MM if language == "mm" else QWEN_MODEL_REPO_EN
         filename = QWEN_MODEL_FILE_MM if language == "mm" else QWEN_MODEL_FILE_EN
         model_path = resolve_gguf_path(local_path, repo_id, filename)
-        llm_en = Llama(model_path=model_path, n_ctx=4096, n_gpu_layers=N_GPU_LAYERS, main_gpu=LLM_GPU_INDEX, verbose=False)
+        llm_en = Llama(model_path=model_path, n_ctx=32768, n_gpu_layers=N_GPU_LAYERS, main_gpu=LLM_GPU_INDEX, verbose=False)
     return llm_en
 
-
 def get_translator():
-    global translator_tokenizer, translator_model
+    global translator_processor, translator_model
 
-    if translator_tokenizer is None or translator_model is None:
+    if translator_processor is None or translator_model is None:
         model_name = resolve_hf_model(TRANSLATER_MODEL_PATH, TRANSLATER_MODEL_ID)
-        translator_tokenizer = AutoTokenizer.from_pretrained(model_name)
-        translator_model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to(PIPELINE_DEVICE)
+        translator_processor = AutoProcessor.from_pretrained(model_name)
+        translator_model = SeamlessM4Tv2Model.from_pretrained(model_name).to(PIPELINE_DEVICE)
+        translator_model.eval()
 
-    return translator_tokenizer, translator_model
-
-tokenizer, model = get_translator()
-llm = get_llm("en")
+    return translator_processor, translator_model
 
 def authorized():
     if not API_TOKEN:
@@ -198,15 +190,23 @@ def format_walking_time_mm(seconds):
     return f"{to_myanmar_number(minutes)} မိနစ် {to_myanmar_number(remaining_seconds)} စက္ကန့်"
 
 def translate(text, src_lang, target_lang):
-    
-    tokenizer.src_lang = src_lang
-    inputs = tokenizer(text, return_tensors="pt").to(model.device)
-    generated_tokens = model.generate(
-        **inputs,
-        forced_bos_token_id=tokenizer.convert_tokens_to_ids(target_lang),
-        max_length=512,
-    )
-    return tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)[0]
+    processor, model = get_translator()
+    seamless_src = SEAMLESS_LANGS.get(src_lang, src_lang)
+    seamless_target = SEAMLESS_LANGS.get(target_lang, target_lang)
+    inputs = processor(text=text, src_lang=seamless_src, return_tensors="pt").to(model.device)
+
+    with torch.no_grad():
+        generated_tokens = model.generate(
+            **inputs,
+            tgt_lang=seamless_target,
+            generate_speech=False,
+            max_new_tokens=1024,
+        )
+
+    token_ids = generated_tokens[0]
+    if hasattr(token_ids, "ndim") and token_ids.ndim > 1:
+        token_ids = token_ids[0]
+    return processor.decode(token_ids.tolist(), skip_special_tokens=True)
 
 def text_chunker(token_stream):
     buffer = ""
@@ -256,10 +256,11 @@ def stream_completion(prompt, language):
     
     convo = conversations[language]
     convo.append({"role": "user", "content": prompt})
-    if len(convo) > 7:
-        conversations[language] = [convo[0]] + convo[-5:]
+    if len(convo) > 15:
+        conversations[language] = [convo[0]] + convo[-10:]
         convo = conversations[language]
 
+    llm = get_llm(language)
     with model_lock:
         stream = llm.create_chat_completion(messages=convo, stream=True, temperature=0.7)
 
@@ -427,15 +428,15 @@ def load_models():
 
     try:
         get_translator()
-        loaded.append("translator")
-    except Exception as exc:
-        errors["translator"] = str(exc)
+        loaded.append("translator:seamless-m4t-v2-large")
+    except Exception as e:
+        errors["translator"] = str(e)
 
     try:
         get_llm("en")
         loaded.append("llm")
-    except Exception as exc:
-        errors["llm"] = str(exc)
+    except Exception as e:
+        errors["llm"] = str(e)
 
     return jsonify({"ok": not errors, "loaded": loaded, "errors": errors})
 

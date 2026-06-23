@@ -72,24 +72,24 @@ def embed_texts(texts):
 def _collection(name):
     return client.get_or_create_collection(name=name)
 
-def _reset_collection(name):
+def reset_collection(name):
     try:
         client.delete_collection(name=name)
     except Exception:
         pass
     return client.create_collection(name=name)
 
-def _flatten_json(value, prefix=""):
+def flatten_json(value, prefix=""):
     chunks = []
 
     if isinstance(value, dict):
         for key, child in value.items():
             label = f"{prefix} {key}".strip().replace("_", " ").title()
-            chunks.extend(_flatten_json(child, label))
+            chunks.extend(flatten_json(child, label))
     elif isinstance(value, list):
         for index, child in enumerate(value, start=1):
             label = f"{prefix} {index}".strip()
-            chunks.extend(_flatten_json(child, label))
+            chunks.extend(flatten_json(child, label))
     else:
         text = str(value).strip()
         if text:
@@ -102,7 +102,7 @@ def load_uni_chunks():
 
     try:
         data = json.loads(raw)
-        chunks = _flatten_json(data)
+        chunks = flatten_json(data)
     except json.JSONDecodeError:
         sections = re.split(r"\n\s*\n+", raw)
         chunks = [section.strip() for section in sections if section.strip()]
@@ -110,7 +110,7 @@ def load_uni_chunks():
     return [chunk for chunk in chunks if len(chunk) > 20]
 
 def populate_uni_info():
-    collection = _reset_collection("uni_info")
+    collection = reset_collection("uni_info")
     chunks = load_uni_chunks()
 
     if not chunks:
@@ -163,7 +163,7 @@ def add_conversation_embedding(conversation_id, english_prompt, english_response
     )
 
 def rebuild_conversation_embeddings():
-    collection = _reset_collection("conversations")
+    collection = reset_collection("conversations")
     rows = fetch_conversations()
     if not rows:
         return {"conversations": 0}
@@ -220,7 +220,7 @@ def clear_conversations():
         cursor.execute("DELETE FROM conversations")
         conn.commit()
     conn.close()
-    _reset_collection("conversations")
+    reset_collection("conversations")
     return {"cleared": True}
 
 def add_manual_memory(text):

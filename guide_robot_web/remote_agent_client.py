@@ -1,4 +1,5 @@
 import base64
+from io import BytesIO
 import json
 import logging
 import os
@@ -21,13 +22,9 @@ KAGGLE_AGENT_TOKEN = os.getenv("KAGGLE_AGENT_TOKEN", "")
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("KAGGLE_AGENT_TIMEOUT", "600"))
 KOKORO_DEVICE = os.getenv("KOKORO_DEVICE", "auto").lower()
 KOKORO_SAMPLE_RATE = 24000
-VITS_MODEL_PATH = r"D:/codes/Vits_mms_finetune/finetune-hf-vits/mms-tts-mya-female-v1"
 
 _tts_lock = threading.Lock()
 _kokoro_pipeline = None
-_vits_model = None
-_vits_tokenizer = None
-_vits_sample_rate = 16000
 
 def get_config():
     return {
@@ -78,19 +75,6 @@ def _get_kokoro():
 
     return _kokoro_pipeline
 
-def _get_vits():
-    global _vits_model, _vits_tokenizer, _vits_sample_rate
-
-    if _vits_model is None or _vits_tokenizer is None:
-        import torch
-        from transformers import AutoTokenizer, VitsModel
-
-        _vits_model = VitsModel.from_pretrained(VITS_MODEL_PATH)
-        _vits_tokenizer = AutoTokenizer.from_pretrained(VITS_MODEL_PATH)
-        _vits_sample_rate = getattr(_vits_model.config, "sampling_rate", 16000)
-
-    return _vits_model, _vits_tokenizer, _vits_sample_rate
-
 def _kokoro_tts(text):
     pipeline = _get_kokoro()
     wav = None
@@ -103,20 +87,42 @@ def _kokoro_tts(text):
 
     return np.asarray(wav, dtype=np.float32), KOKORO_SAMPLE_RATE
 
-def _vits_tts(text):
+def _gtts_tts(text):
+    from gtts import gTTS
     import torch
+    import torchaudio
 
-    model, tokenizer, sample_rate = _get_vits()
-    inputs = tokenizer(text, return_tensors="pt")
-    with torch.no_grad():
-        output = model(**inputs).waveform
-    return output.squeeze().cpu().numpy().astype(np.float32), sample_rate
+    mp3_buffer = BytesIO()
+    gTTS(text=text, lang="my").write_to_fp(mp3_buffer)
+    mp3_buffer.seek(0)
+
+    waveform, sample_rate = torchaudio.load(mp3_buffer, format="mp3")
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+
+    return waveform.squeeze(0).to(torch.float32).cpu().numpy().astype(np.float32), sample_rate
 
 def _local_tts(text, language):
     with _tts_lock:
         if language == "mm":
-            return _vits_tts(text)
+            return _gtts_tts(text)
         return _kokoro_tts(text)
+
+def _check_gtts_available():
+    import gtts
+    import torchaudio
+
+    if not hasattr(torchaudio, "load"):
+        raise RuntimeError("torchaudio.load is not available")
+    try:
+        from torchaudio.utils import ffmpeg_utils
+
+        decoders = ffmpeg_utils.get_audio_decoders()
+        if decoders and "mp3" not in decoders:
+            raise RuntimeError("torchaudio MP3 decoder is not available")
+    except ImportError:
+        pass
+    return gtts.__version__
 
 def preload_local_models():
     loaded = []
@@ -130,10 +136,10 @@ def preload_local_models():
             errors["kokoro"] = str(exc)
 
         try:
-            _get_vits()
-            loaded.append("vits")
+            _check_gtts_available()
+            loaded.append("gtts")
         except Exception as exc:
-            errors["vits"] = str(exc)
+            errors["gtts"] = str(exc)
 
     return {
         "ok": not errors,

@@ -6,7 +6,6 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# --- Config (tweak these) ---
 MOUTH_CLOSED_ANGLE = 90
 MOUTH_OPEN_ANGLE = 135
 ENVELOPE_WINDOW_MS = 50
@@ -17,14 +16,12 @@ DEFAULT_PORT = 80
 
 _esp32_url = None
 
-
 def _discover():
     global _esp32_url
 
     if _esp32_url is not None:
         return _esp32_url
 
-    # 1. Try mDNS
     try:
         ip = socket.gethostbyname(MDNS_HOSTNAME)
         _esp32_url = f"http://{ip}:{DEFAULT_PORT}"
@@ -33,16 +30,14 @@ def _discover():
     except OSError:
         logger.debug("mDNS resolution failed for %s", MDNS_HOSTNAME)
 
-    # 2. Fallback: environment variable
     static_ip = os.getenv("SERVO_ESP32_IP")
     if static_ip:
         _esp32_url = f"http://{static_ip}:{DEFAULT_PORT}"
         logger.info("Servo ESP32 using static IP %s", _esp32_url)
         return _esp32_url
 
-    logger.warning("Servo ESP32 not found — mouth will not move")
+    logger.warning("Servo ESP32 not found")
     return None
-
 
 def _send_angle(angle):
     url = _discover()
@@ -52,13 +47,11 @@ def _send_angle(angle):
         r = requests.get(f"{url}/servo?angle={int(angle)}", timeout=1)
         return r.ok
     except requests.RequestException:
-        logger.debug("Servo HTTP failed (offline?)")
+        logger.debug("Servo HTTP failed")
         return False
-
 
 def set_angle(angle):
     return _send_angle(angle)
-
 
 def play_speech(audio: np.ndarray, sample_rate: int) -> bool:
     url = _discover()
@@ -112,7 +105,6 @@ def play_speech(audio: np.ndarray, sample_rate: int) -> bool:
     except requests.RequestException:
         logger.debug("Failed to send envelope to servo")
         return False
-
 
 def close_mouth():
     return _send_angle(MOUTH_CLOSED_ANGLE)

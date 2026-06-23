@@ -90,8 +90,8 @@ def admin_db():
             result = {"id": add_manual_memory(data.get("text", ""))}
         else:
             return jsonify({"error": "unknown command"}), 400
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
     result["status"] = memory_status()
     return jsonify(result)
@@ -102,12 +102,12 @@ def load_models():
         result = preload_models()
         try:
             result["voice"] = preload_voice()
-        except Exception as exc:
-            result["voice"] = {"ok": False, "error": str(exc)}
+        except Exception as e:
+            result["voice"] = {"ok": False, "error": str(e)}
         result["ok"] = bool(result.get("ok")) and bool(result["voice"].get("ok"))
         return jsonify(result)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route("/stream")
 def stream():
@@ -119,7 +119,6 @@ def stream():
     return Response(generate(), mimetype="text/plain")
 
 def run_guide_agent():
-    print("Guide Robot prompt worker ready.")
 
     while True:
         item = prompt_queue.get()

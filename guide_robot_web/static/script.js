@@ -11,6 +11,7 @@ const mapDistance = document.getElementById('map-distance');
 const mapTime = document.getElementById('map-time');
 const routeHeading = document.querySelector('.direction-panel h3');
 const streamCursor = document.getElementById('stream-cursor');
+const routeBackBtn = document.getElementById('route-back-btn');
 
 const micBtn = document.getElementById('mic-btn');
 const listeningOverlay = document.getElementById('listening-overlay');
@@ -30,12 +31,13 @@ let charQueue = [];
 let typeInterval = null;
 let currentSpan = null;
 let currentScrollEl = null;
+let currentTargetEl = null;
 const CHAR_DELAY_MS = 18;
 
-// --- Voice state ---
+//Voice state
 let isListening = false;
 
-// --- Mode check ---
+//Mode check
 async function fetchMode() {
     try {
         const r = await fetch('/api/mode');
@@ -51,6 +53,7 @@ function renderMode() {
         button.classList.toggle('active', button.dataset.mode === currentLanguage);
     });
     mmControlPanel.classList.toggle('hidden', currentLanguage !== 'mm' || isResponding);
+    routeBackBtn.classList.toggle('hidden', currentLanguage !== 'mm' || routeView.classList.contains('hidden'));
 }
 
 function updateMicVisibility() {
@@ -64,7 +67,7 @@ function updateMicVisibility() {
     }
 }
 
-// --- Transcript ---
+//Transcript
 function addTranscript(text) {
     if (!routeView.classList.contains('hidden')) return;
     transcriptPanel.classList.remove('hidden');
@@ -75,7 +78,7 @@ function addTranscript(text) {
     transcriptList.scrollTop = transcriptList.scrollHeight;
 }
 
-// --- Push-to-talk ---
+//Push to talk
 micBtn.addEventListener('click', async () => {
     if (isListening || isResponding) return;
     isListening = true;
@@ -123,11 +126,29 @@ async function sendPrompt(prompt) {
     const clean = prompt.trim();
     if (!clean || isResponding) return;
 
-    await fetch('/api/prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: clean, language: currentLanguage }),
-    });
+    isResponding = true;
+    updateMicVisibility();
+
+    try {
+        const response = await fetch('/api/prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: clean, language: currentLanguage }),
+        });
+
+        if (response.ok) return;
+    } catch {}
+
+    isResponding = false;
+    updateMicVisibility();
+}
+
+function showInteractiveHome() {
+    routeView.classList.add('hidden');
+    displayArea.classList.remove('hidden');
+    transcriptPanel.classList.remove('route-mode');
+    routeBackBtn.classList.add('hidden');
+    updateMicVisibility();
 }
 
 modeButtons.forEach((button) => {
@@ -161,6 +182,10 @@ mmActionButtons.forEach((button) => {
     });
 });
 
+routeBackBtn.addEventListener('click', () => {
+    showInteractiveHome();
+});
+
 // --- Typing engine ---
 function startTyping() {
     if (typeInterval) return;
@@ -183,7 +208,8 @@ function drainQueue() {
         if (!currentSpan) {
             currentSpan = document.createElement('span');
             currentSpan.className = 'stream-line';
-            (output === currentScrollEl?.firstChild ? output : (currentSpan._target || output)).appendChild(currentSpan);
+            currentSpan._target = currentTargetEl || output;
+            currentSpan._target.appendChild(currentSpan);
         }
         currentSpan.textContent += ch;
     }
@@ -206,6 +232,7 @@ function enqueueText(text, targetEl, scrollEl) {
     }
 
     currentScrollEl = scrollEl;
+    currentTargetEl = targetEl;
 
     for (const ch of text) {
         charQueue.push(ch);
@@ -221,6 +248,7 @@ function flushQueue() {
     charQueue = [];
     currentSpan = null;
     currentScrollEl = null;
+    currentTargetEl = null;
     if (streamCursor) streamCursor.classList.remove('active');
 }
 
@@ -263,6 +291,7 @@ async function listenToStream() {
                     updateMicVisibility();
                     flushQueue();
                     routeView.classList.add('hidden');
+                    routeBackBtn.classList.add('hidden');
                     displayArea.classList.remove('hidden');
                     transcriptPanel.classList.remove('route-mode');
                     continue;
@@ -302,6 +331,8 @@ function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
     transcriptPanel.classList.add('hidden');
+    routeBackBtn.textContent = currentLanguage === 'mm' ? 'နောက်သို့' : 'Back';
+    routeBackBtn.classList.toggle('hidden', currentLanguage !== 'mm');
 
     const isMyanmar = data.displayLanguage === 'mm';
     const startName = data.startNameLocalized || data.startName;
@@ -324,6 +355,7 @@ function showRoute(data) {
     routeMarkers.innerHTML = '';
     routeNarration.innerHTML = '';
     currentSpan = null;
+    currentTargetEl = routeNarration;
 
     animateRouteLine();
 }

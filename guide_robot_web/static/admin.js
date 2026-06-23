@@ -47,7 +47,7 @@ async function loadDatabaseStatus() {
 }
 
 async function runDatabaseCommand(command, text = '') {
-    setStatus('Running database command...');
+    setStatus('Running database command');
     const response = await fetch('/api/admin/db', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -79,7 +79,7 @@ modeButtons.forEach((button) => {
     button.addEventListener('click', async () => {
         const language = button.dataset.mode;
         renderMode(language);
-        setStatus('Switching mode...');
+        setStatus('Switching mode');
 
         const response = await fetch('/api/mode', {
             method: 'POST',
@@ -99,7 +99,7 @@ modeButtons.forEach((button) => {
 remoteForm.addEventListener('submit', async (event) => {
     event.preventDefault();
 
-    setStatus('Saving Kaggle URL...');
+    setStatus('Saving Kaggle URL');
     const response = await fetch('/api/remote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,7 +117,7 @@ remoteForm.addEventListener('submit', async (event) => {
 loadModelsBtn.addEventListener('click', async () => {
     loadModelsBtn.disabled = true;
     modelLoadStatus.textContent = 'Loading local and Kaggle models...';
-    setStatus('Loading models...');
+    setStatus('Loading models');
 
     try {
         const response = await fetch('/api/admin/models/load', {
