@@ -34,6 +34,52 @@ let currentScrollEl = null;
 let currentTargetEl = null;
 const CHAR_DELAY_MS = 18;
 
+//Phone speaker toggle
+let phoneSpeakerEnabled = true;
+let phoneAudioCtx = null;
+
+function getPhoneAudioCtx() {
+    if (!phoneAudioCtx) {
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        phoneAudioCtx = new Ctor();
+    }
+    return phoneAudioCtx;
+}
+
+function base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const buffer = new ArrayBuffer(len);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < len; i++) {
+        view[i] = binary.charCodeAt(i);
+    }
+    return buffer;
+}
+
+async function playPhoneAudio(base64Data, sampleRate) {
+    if (!phoneSpeakerEnabled) return;
+    try {
+        const ctx = getPhoneAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') await ctx.resume();
+        const pcm16 = new Int16Array(base64ToArrayBuffer(base64Data));
+        const floatData = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) {
+            floatData[i] = pcm16[i] / 32768;
+        }
+        const audioBuffer = ctx.createBuffer(1, floatData.length, sampleRate);
+        audioBuffer.getChannelData(0).set(floatData);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+    } catch (err) {
+        console.error('Phone audio error:', err);
+    }
+}
+
 //Voice state
 let isListening = false;
 
@@ -186,6 +232,17 @@ routeBackBtn.addEventListener('click', () => {
     showInteractiveHome();
 });
 
+//Phone speaker toggle
+const phoneSpeakerBtn = document.getElementById('phone-speaker-btn');
+phoneSpeakerBtn.addEventListener('click', () => {
+    phoneSpeakerEnabled = !phoneSpeakerEnabled;
+    phoneSpeakerBtn.classList.toggle('active', phoneSpeakerEnabled);
+    if (phoneSpeakerEnabled) {
+        const ctx = getPhoneAudioCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+});
+
 // --- Typing engine ---
 function startTyping() {
     if (typeInterval) return;
@@ -311,6 +368,11 @@ async function listenToStream() {
                         : document.querySelector('.stream-container');
 
                     enqueueText(event.data, targetEl, scrollEl);
+                }
+
+                if (event.type === 'audio') {
+                    playPhoneAudio(event.data.data, event.data.sampleRate || 24000);
+                    continue;
                 }
 
                 if (event.type === 'memory' || event.type === 'done') {

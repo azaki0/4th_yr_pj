@@ -172,6 +172,19 @@ def preload_models():
     result["ok"] = bool(result["local"].get("ok")) and bool(result["kaggle"].get("ok"))
     return result
 
+def _stream_audio_to_web(audio, sample_rate):
+    try:
+        audio_int16 = (audio * 32767).astype(np.int16)
+        audio_bytes = audio_int16.tobytes()
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        send_event("audio", {
+            "data": audio_b64,
+            "sampleRate": sample_rate,
+            "dtype": "int16",
+        })
+    except Exception as exc:
+        logger.warning("Failed to stream audio to web: %s", exc)
+
 def _play_local_speech(text, language):
     if not text:
         return
@@ -181,6 +194,8 @@ def _play_local_speech(text, language):
     except Exception as exc:
         send_text(f"Local TTS unavailable: {exc}\n")
         return
+
+    _stream_audio_to_web(audio, sample_rate)
 
     sd.play(audio, samplerate=sample_rate)
     time.sleep(AUDIO_LEAD_MS / 1000)

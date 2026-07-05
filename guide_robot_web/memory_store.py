@@ -8,6 +8,7 @@ from llama_cpp import Llama
 from psycopg.rows import dict_row
 
 
+
 ROOT_DIR = Path.cwd()
 UNI_INFO_PATH = ROOT_DIR / "txt_files" / "uni_info"
 CHROMA_PATH = ROOT_DIR / "guide_robot_web" / ".chroma_memory"
