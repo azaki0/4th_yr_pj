@@ -262,8 +262,7 @@ code {
     cursor: not-allowed;
 }
 
-.interaction-title,
-.interaction-file {
+.interaction-title {
     display: block;
     overflow-wrap: anywhere;
 }
@@ -272,13 +271,6 @@ code {
     font-size: 15px;
     font-weight: 700;
     line-height: 1.25;
-}
-
-.interaction-file {
-    margin-top: 8px;
-    color: var(--text-dim);
-    font-size: 12px;
-    font-weight: 600;
 }
 
 .audio-list {

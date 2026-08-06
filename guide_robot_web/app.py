@@ -1,11 +1,10 @@
 import logging
 import threading
 from queue import Queue
-
 from flask import Flask, Response, jsonify, render_template, request
-
 from bridge import reset_display, send_event, send_text
 from demo_interactions import INTERACTIONS, run_interaction
+from motion_commands import MOTION_COMMANDS, send_motion_command
 
 app = Flask(__name__)
 interaction_queue = Queue()
@@ -18,9 +17,25 @@ def index():
 def admin():
     return render_template("admin.html", interactions=INTERACTIONS)
 
+@app.route("/motion")
+def motion():
+    return render_template("motion.html", motions=MOTION_COMMANDS)
+
 @app.route("/api/interactions")
 def interactions():
     return jsonify({"interactions": INTERACTIONS})
+
+@app.route("/api/motion")
+def motion_commands():
+    return jsonify({"motions": MOTION_COMMANDS})
+
+@app.route("/api/motion/<motion_id>/send", methods=["POST"])
+def send_motion(motion_id):
+    motion = next((item for item in MOTION_COMMANDS if item["id"] == motion_id), None)
+    if motion is None:
+        return jsonify({"error": "unknown motion command"}), 404
+
+    return jsonify(send_motion_command(motion))
 
 @app.route("/api/interactions/<interaction_id>/play", methods=["POST"])
 def play_interaction(interaction_id):
@@ -55,9 +70,9 @@ def run_demo_worker():
         interaction = interaction_queue.get()
         try:
             run_interaction(interaction)
-        except Exception as exc:
+        except Exception as e:
             reset_display()
-            send_text(f"Demo interaction error: {exc}")
+            send_text(f"Demo interaction error: {e}")
             send_event("done")
         finally:
             interaction_queue.task_done()

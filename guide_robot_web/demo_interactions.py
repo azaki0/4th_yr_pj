@@ -14,25 +14,25 @@ INTERACTIONS = [
     {
         "id": "welcome",
         "label": "Welcome",
-        "text": "မဂ်လာပါ ကျွန်မကတော့ နေပြည်တော်နည်းပညာတက္ကသိုလ် နေပြည်တော်စတိတ်ပိုလီတက်ကနစ်ယူနီဗာစီတီ စက်မှုဌာနမှ ကျောင်းသားများမှ ဖန်တီးထားသော အေအိုင်စက်ရုပ်တစ်ခုဖြစ်ပါတယ်",
+        "text": "မဂ်လာပါ။ ကျွန်မကတော့ နေပြည်တော်နည်းပညာတက္ကသိုလ် Naypyitaw State Polytechnic University စက်မှုဌာနမှ ကျောင်းသားများမှ ဖန်တီးထားသော AI စက်ရုပ်တစ်ခုဖြစ်ပါတယ်။",
         "audio": "welcome.wav",
     },
     {
         "id": "overview",
         "label": "NSPU Overview",
-        "text": "NSPU is a university campus with academic buildings, dormitories, workshops, and student facilities.",
-        "audio": "overview.wav",
+        "text": "NayPyiTaw State Polytechnic တက္ကသိုလ်သည် ဇမ္ဗူသီရိ မြို့နယ်တွင် တည်ရှိသော နည်းပညာတက္ကသိုလ် တစ်ခု ဖြစ်ပါသည်။ ဤတက္ကသိုလ်တွင် မြို့ပြ၊ စက်မှု၊ အီလက်ထရွန်းနစ်၊ လျှပ်စစ်စွမ်းအား၊ ကွန်ပျူတာ အင်ဂျင်နီယာနှင့် ဗိသုကာ ဘာသာရပ်များကို သင်ကြားပေးလျက် ရှိပါသည်။",
+        "audio": "nspu_overview.wav",
     },
     {
         "id": "help",
-        "label": "Ask For Help",
-        "text": "I can play prepared demo responses and move my mouth with the audio. The full AI and network features are disabled for this offline demo.",
-        "audio": "help.wav",
+        "label": "Demo",
+        "text": "အင်တာနက် ချိတ်ဆက်မှု မရရှိသည့်အတွက် ကျွန်မရဲ့ စွမ်းဆောင်နိုင်စွမ်း အစစ်အမှန်ကို မပြသနိုင်သော်လည်း ယခု Demo Version မှတစ်ဆင့် Screen ဖြင့်  Interactive ဖြစ်အောင် ပြုလုပ်ထားပါတယ်ရှင့်။",
+        "audio": "saying_demo.wav",
     },
     {
         "id": "goodbye",
         "label": "Goodbye",
-        "text": "Thank you for visiting. Have a great day.",
+        "text": "အခုလို မိတ်ဆက်ခွင့်ရရှိသည့်အတွက်ကျေးဇူးတင်ပါတယ်ရှင်။ ဒီမှာတင်နှုတ်ဆက်လိုက်ပါတယ်ရှင်။",
         "audio": "goodbye.wav",
     },
 ]
