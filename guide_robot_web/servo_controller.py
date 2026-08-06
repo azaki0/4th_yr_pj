@@ -3,6 +3,7 @@ import os
 import socket
 import numpy as np
 import requests
+from latency_tracker import TimerContext
 
 logger = logging.getLogger(__name__)
 
@@ -40,71 +41,76 @@ def _discover():
     return None
 
 def _send_angle(angle):
-    url = _discover()
-    if url is None:
-        return False
-    try:
-        r = requests.get(f"{url}/servo?angle={int(angle)}", timeout=1)
-        return r.ok
-    except requests.RequestException:
-        logger.debug("Servo HTTP failed")
-        return False
+    with TimerContext("servo_send_angle"):
+        url = _discover()
+        if url is None:
+            return False
+        try:
+            r = requests.get(f"{url}/servo?angle={int(angle)}", timeout=1)
+            return r.ok
+        except requests.RequestException:
+            logger.debug("Servo HTTP failed")
+            return False
 
 def set_angle(angle):
     return _send_angle(angle)
 
 def play_speech(audio: np.ndarray, sample_rate: int) -> bool:
-    url = _discover()
-    if url is None:
-        return False
+    with TimerContext("play_speech_total"):
+        url = _discover()
+        if url is None:
+            return False
 
-    window_size = int(sample_rate * ENVELOPE_WINDOW_MS / 1000)
-    if window_size < 1:
-        window_size = 1
+        window_size = int(sample_rate * ENVELOPE_WINDOW_MS / 1000)
+        if window_size < 1:
+            window_size = 1
 
-    num_windows = len(audio) // window_size
-    if num_windows < 2:
-        return False
+        num_windows = len(audio) // window_size
+        if num_windows < 2:
+            return False
 
-    audio_trimmed = audio[:num_windows * window_size]
-    windows = audio_trimmed.reshape(num_windows, window_size)
-    rms = np.sqrt(np.mean(windows ** 2, axis=1))
+        with TimerContext("compute_audio_envelope"):
+            audio_trimmed = audio[:num_windows * window_size]
+            windows = audio_trimmed.reshape(num_windows, window_size)
+            rms = np.sqrt(np.mean(windows ** 2, axis=1))
 
-    max_rms = rms.max()
-    if max_rms > 1e-10:
-        rms = rms / max_rms
+            max_rms = rms.max()
+            if max_rms > 1e-10:
+                rms = rms / max_rms
 
-    if SMOOTH_WINDOW > 1 and len(rms) > SMOOTH_WINDOW:
-        kernel = np.ones(SMOOTH_WINDOW) / SMOOTH_WINDOW
-        rms = np.convolve(rms, kernel, mode="same")
+            if SMOOTH_WINDOW > 1 and len(rms) > SMOOTH_WINDOW:
+                kernel = np.ones(SMOOTH_WINDOW) / SMOOTH_WINDOW
+                rms = np.convolve(rms, kernel, mode="same")
 
-    angles = MOUTH_CLOSED_ANGLE + rms * (MOUTH_OPEN_ANGLE - MOUTH_CLOSED_ANGLE)
-    angles = np.clip(angles, 0, 180).astype(int)
+            angles = MOUTH_CLOSED_ANGLE + rms * (MOUTH_OPEN_ANGLE - MOUTH_CLOSED_ANGLE)
+            angles = np.clip(angles, 0, 180).astype(int)
 
-    if len(angles) > MAX_ENVELOPE_FRAMES:
-        idx = np.linspace(0, len(angles) - 1, MAX_ENVELOPE_FRAMES).astype(int)
-        angles = angles[idx]
-        interval_ms = max(
-            ENVELOPE_WINDOW_MS,
-            int(round(len(audio) * 1000 / sample_rate / MAX_ENVELOPE_FRAMES)),
-        )
-    else:
-        interval_ms = ENVELOPE_WINDOW_MS
+            if len(angles) > MAX_ENVELOPE_FRAMES:
+                idx = np.linspace(0, len(angles) - 1, MAX_ENVELOPE_FRAMES).astype(int)
+                angles = angles[idx]
+                interval_ms = max(
+                    ENVELOPE_WINDOW_MS,
+                    int(round(len(audio) * 1000 / sample_rate / MAX_ENVELOPE_FRAMES)),
+                )
+            else:
+                interval_ms = ENVELOPE_WINDOW_MS
 
-    try:
-        r = requests.post(
-            f"{url}/envelope",
-            json={
-                "angles": angles.tolist(),
-                "interval_ms": interval_ms,
-                "start_delay_ms": 0,
-            },
-            timeout=2,
-        )
-        return r.ok
-    except requests.RequestException:
-        logger.debug("Failed to send envelope to servo")
-        return False
+        with TimerContext("servo_envelope_http"):
+            try:
+                r = requests.post(
+                    f"{url}/envelope",
+                    json={
+                        "angles": angles.tolist(),
+                        "interval_ms": interval_ms,
+                        "start_delay_ms": 0,
+                    },
+                    timeout=2,
+                )
+                return r.ok
+            except requests.RequestException:
+                logger.debug("Failed to send envelope to servo")
+                return False
 
 def close_mouth():
-    return _send_angle(MOUTH_CLOSED_ANGLE)
+    with TimerContext("servo_close_mouth"):
+        return _send_angle(MOUTH_CLOSED_ANGLE)

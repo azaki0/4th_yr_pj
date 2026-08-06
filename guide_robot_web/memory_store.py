@@ -6,6 +6,7 @@ import chromadb
 import psycopg
 from llama_cpp import Llama
 from psycopg.rows import dict_row
+from latency_tracker import TimerContext
 
 
 
@@ -64,11 +65,13 @@ def get_embedder():
     return text_embed
 
 def embed_text(text):
-    response = get_embedder().create_embedding(text)
-    return response["data"][0]["embedding"]
+    with TimerContext("embed_text"):
+        response = get_embedder().create_embedding(text)
+        return response["data"][0]["embedding"]
 
 def embed_texts(texts):
-    return [embed_text(text) for text in texts]
+    with TimerContext("embed_texts", metadata={"count": len(texts)}):
+        return [embed_text(text) for text in texts]
 
 def _collection(name):
     return client.get_or_create_collection(name=name)
@@ -111,19 +114,23 @@ def load_uni_chunks():
     return [chunk for chunk in chunks if len(chunk) > 20]
 
 def populate_uni_info():
-    collection = reset_collection("uni_info")
-    chunks = load_uni_chunks()
+    with TimerContext("populate_uni_info"):
+        collection = reset_collection("uni_info")
+        chunks = load_uni_chunks()
 
-    if not chunks:
-        return {"chunks": 0}
+        if not chunks:
+            return {"chunks": 0}
 
-    collection.add(
-        ids=[f"uni-{index}" for index in range(len(chunks))],
-        embeddings=embed_texts(chunks),
-        documents=chunks,
-        metadatas=[{"source": "uni_info"} for _ in chunks],
-    )
-    return {"chunks": len(chunks)}
+        with TimerContext("embed_uni_chunks"):
+            embeddings = embed_texts(chunks)
+
+        collection.add(
+            ids=[f"uni-{index}" for index in range(len(chunks))],
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=[{"source": "uni_info"} for _ in chunks],
+        )
+        return {"chunks": len(chunks)}
 
 def fetch_conversations():
     ensure_tables()
@@ -154,45 +161,53 @@ def store_conversation(mode, original_prompt, english_prompt, english_response):
     return row["id"]
 
 def add_conversation_embedding(conversation_id, english_prompt, english_response):
-    collection = _collection("conversations")
-    document = f"prompt: {english_prompt}\nresponse: {english_response}"
-    collection.upsert(
-        ids=[str(conversation_id)],
-        embeddings=[embed_text(document)],
-        documents=[document],
-        metadatas=[{"source": "conversation"}],
-    )
+    with TimerContext("add_conversation_embedding"):
+        collection = _collection("conversations")
+        document = f"prompt: {english_prompt}\nresponse: {english_response}"
+        collection.upsert(
+            ids=[str(conversation_id)],
+            embeddings=[embed_text(document)],
+            documents=[document],
+            metadatas=[{"source": "conversation"}],
+        )
 
 def rebuild_conversation_embeddings():
-    collection = reset_collection("conversations")
-    rows = fetch_conversations()
-    if not rows:
-        return {"conversations": 0}
+    with TimerContext("rebuild_conversation_embeddings"):
+        collection = reset_collection("conversations")
+        rows = fetch_conversations()
+        if not rows:
+            return {"conversations": 0}
 
-    documents = [f"prompt: {row['prompt']}\nresponse: {row['response']}" for row in rows]
-    collection.add(
-        ids=[str(row["id"]) for row in rows],
-        embeddings=embed_texts(documents),
-        documents=documents,
-        metadatas=[{"source": "conversation"} for _ in rows],
-    )
-    return {"conversations": len(rows)}
+        documents = [f"prompt: {row['prompt']}\nresponse: {row['response']}" for row in rows]
+
+        with TimerContext("embed_conversations"):
+            embeddings = embed_texts(documents)
+
+        collection.add(
+            ids=[str(row["id"]) for row in rows],
+            embeddings=embeddings,
+            documents=documents,
+            metadatas=[{"source": "conversation"} for _ in rows],
+        )
+        return {"conversations": len(rows)}
 
 def retrieve_context(english_prompt, uni_results=10, memory_results=5):
-    result = {"uni_context": [], "memory_context": []}
+    with TimerContext("retrieve_context_total"):
+        result = {"uni_context": [], "memory_context": []}
 
-    for name, key, count in [
-        ("uni_info", "uni_context", uni_results),
-        ("conversations", "memory_context", memory_results),
-    ]:
-        try:
-            collection = _collection(name)
-            query = collection.query(query_embeddings=[embed_text(english_prompt)], n_results=count)
-            result[key] = query.get("documents", [[]])[0]
-        except Exception:
-            result[key] = []
+        for name, key, count in [
+            ("uni_info", "uni_context", uni_results),
+            ("conversations", "memory_context", memory_results),
+        ]:
+            try:
+                with TimerContext(f"chroma_query_{name}"):
+                    collection = _collection(name)
+                    query = collection.query(query_embeddings=[embed_text(english_prompt)], n_results=count)
+                    result[key] = query.get("documents", [[]])[0]
+            except Exception:
+                result[key] = []
 
-    return result
+        return result
 
 def remove_last_conversation():
     ensure_tables()

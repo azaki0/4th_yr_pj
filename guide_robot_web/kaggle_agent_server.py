@@ -10,6 +10,7 @@ from llama_cpp import Llama
 from num2words import num2words
 from transformers import AutoProcessor, SeamlessM4Tv2Model
 from navigation import route_to_place
+from latency_tracker import TimerContext, set_request_info, finalize_request, get_latency_logs, clear_latency_logs
 
 app = Flask(__name__)
 warnings.filterwarnings("ignore")
@@ -190,23 +191,24 @@ def format_walking_time_mm(seconds):
     return f"{to_myanmar_number(minutes)} မိနစ် {to_myanmar_number(remaining_seconds)} စက္ကန့်"
 
 def translate(text, src_lang, target_lang):
-    processor, model = get_translator()
-    seamless_src = SEAMLESS_LANGS.get(src_lang, src_lang)
-    seamless_target = SEAMLESS_LANGS.get(target_lang, target_lang)
-    inputs = processor(text=text, src_lang=seamless_src, return_tensors="pt").to(model.device)
+    with TimerContext("seamless_translate"):
+        processor, model = get_translator()
+        seamless_src = SEAMLESS_LANGS.get(src_lang, src_lang)
+        seamless_target = SEAMLESS_LANGS.get(target_lang, target_lang)
+        inputs = processor(text=text, src_lang=seamless_src, return_tensors="pt").to(model.device)
 
-    with torch.no_grad():
-        generated_tokens = model.generate(
-            **inputs,
-            tgt_lang=seamless_target,
-            generate_speech=False,
-            max_new_tokens=1024,
-        )
+        with torch.no_grad():
+            generated_tokens = model.generate(
+                **inputs,
+                tgt_lang=seamless_target,
+                generate_speech=False,
+                max_new_tokens=1024,
+            )
 
-    token_ids = generated_tokens[0]
-    if hasattr(token_ids, "ndim") and token_ids.ndim > 1:
-        token_ids = token_ids[0]
-    return processor.decode(token_ids.tolist(), skip_special_tokens=True)
+        token_ids = generated_tokens[0]
+        if hasattr(token_ids, "ndim") and token_ids.ndim > 1:
+            token_ids = token_ids[0]
+        return processor.decode(token_ids.tolist(), skip_special_tokens=True)
 
 def text_chunker(token_stream):
     buffer = ""
@@ -253,21 +255,22 @@ def build_route_context(english_prompt, language):
     return route, context
 
 def stream_completion(prompt, language):
-    
-    convo = conversations[language]
-    convo.append({"role": "user", "content": prompt})
-    if len(convo) > 15:
-        conversations[language] = [convo[0]] + convo[-10:]
+    with TimerContext("stream_completion_total"):
         convo = conversations[language]
+        convo.append({"role": "user", "content": prompt})
+        if len(convo) > 15:
+            conversations[language] = [convo[0]] + convo[-10:]
+            convo = conversations[language]
 
-    llm = get_llm(language)
-    with model_lock:
-        stream = llm.create_chat_completion(messages=convo, stream=True, temperature=0.7)
+        llm = get_llm(language)
+        with TimerContext("llm_generate", metadata={"model": "qwen", "language": language}):
+            with model_lock:
+                stream = llm.create_chat_completion(messages=convo, stream=True, temperature=0.7)
 
-    for chunk in stream:
-        delta = chunk["choices"][0]["delta"]
-        if "content" in delta:
-            yield delta["content"]
+        for chunk in stream:
+            delta = chunk["choices"][0]["delta"]
+            if "content" in delta:
+                yield delta["content"]
 
 def format_context(title, chunks):
     clean_chunks = [chunk.strip() for chunk in chunks if isinstance(chunk, str) and chunk.strip()]
@@ -304,7 +307,8 @@ def trim_context(chunks, limit=3, max_chars=420):
 
 def localized_response_events(response_text, language):
     if language == "mm":
-        display_text = translate(numbers_to_words(response_text), "eng_Latn", "mya_Mymr")
+        with TimerContext("seamless_translate_response"):
+            display_text = translate(numbers_to_words(response_text), "eng_Latn", "mya_Mymr")
         return [
             event("text", display_text + " "),
             event("speech", display_text, language="mm"),
@@ -316,7 +320,8 @@ def localized_response_events(response_text, language):
 
 def emit_answer(sentence, language):
     if language == "mm":
-        display_sentence = translate(numbers_to_words(sentence), "eng_Latn", "mya_Mymr")
+        with TimerContext("seamless_translate_sentence"):
+            display_sentence = translate(numbers_to_words(sentence), "eng_Latn", "mya_Mymr")
         return [
             event("text", display_sentence + " "),
             event("speech", display_sentence, language="mm"),
@@ -327,92 +332,101 @@ def emit_answer(sentence, language):
     ]
 
 def run_chat(prompt, language, english_prompt=None, uni_context=None, memory_context=None):
-    yield event("reset")
+    set_request_info(prompt, language)
+    try:
+        with TimerContext("run_chat_total"):
+            yield event("reset")
 
-    english_prompt = english_prompt or (translate(prompt, "mya_Mymr", "eng_Latn") if language == "mm" else prompt)
-    route, route_context = build_route_context(english_prompt, language)
-    if route:
-        yield event("route", route)
-    elif is_route_question(english_prompt):
-        known_places = "Main Entrance, Entrance B, Main Building, Workshop, Teacher Dormitories A to D, View Point, Boys Dormitories A and B, Canteen, Girls Dormitory, and Stadium"
-        response_text = (
-            "I could not match that destination on the campus map. "
-            f"Please say one of these places: {known_places}."
-        )
-        for response_event in localized_response_events(response_text, language):
-            yield response_event
-        yield event(
-            "memory",
-            {
-                "english_prompt": english_prompt,
-                "english_response": response_text,
-            },
-        )
-        return
+            with TimerContext("translate_english_prompt"):
+                english_prompt = english_prompt or (translate(prompt, "mya_Mymr", "eng_Latn") if language == "mm" else prompt)
+            
+            with TimerContext("build_route_context"):
+                route, route_context = build_route_context(english_prompt, language)
+            if route:
+                yield event("route", route)
+            elif is_route_question(english_prompt):
+                known_places = "Main Entrance, Entrance B, Main Building, Workshop, Teacher Dormitories A to D, View Point, Boys Dormitories A and B, Canteen, Girls Dormitory, and Stadium"
+                response_text = (
+                    "I could not match that destination on the campus map. "
+                    f"Please say one of these places: {known_places}."
+                )
+                for response_event in localized_response_events(response_text, language):
+                    yield response_event
+                yield event(
+                    "memory",
+                    {
+                        "english_prompt": english_prompt,
+                        "english_response": response_text,
+                    },
+                )
+                return
 
-    if route_context:
-        prompt_for_llm = (
-            "Answer rule: generate one short spoken sentence using only this route fact. "
-            "Do not add turns, floors, elevators, landmarks, or extra directions. "
-            "Use simple English for translation.\n"
-            f"{route_context}\nUSER PROMPT: {english_prompt}"
-        )
-    else:
-        uni_limit = 2 if is_overview_question(english_prompt) else 4
-        memory_limit = 1 if is_overview_question(english_prompt) else 2
-        context_blocks = (
-            format_context("UNIVERSITY INFORMATION", trim_context(uni_context or [], limit=uni_limit))
-            + format_context("RELEVANT CONVERSATION MEMORY", trim_context(memory_context or [], limit=memory_limit))
-        )
+            if route_context:
+                prompt_for_llm = (
+                    "Answer rule: generate one short spoken sentence using only this route fact. "
+                    "Do not add turns, floors, elevators, landmarks, or extra directions. "
+                    "Use simple English for translation.\n"
+                    f"{route_context}\nUSER PROMPT: {english_prompt}"
+                )
+            else:
+                uni_limit = 2 if is_overview_question(english_prompt) else 4
+                memory_limit = 1 if is_overview_question(english_prompt) else 2
+                with TimerContext("format_context"):
+                    context_blocks = (
+                        format_context("UNIVERSITY INFORMATION", trim_context(uni_context or [], limit=uni_limit))
+                        + format_context("RELEVANT CONVERSATION MEMORY", trim_context(memory_context or [], limit=memory_limit))
+                    )
 
-    if route_context:
-        pass
-    elif context_blocks:
-        answer_rule = (
-            "Answer rule: give a brief spoken overview in at most three sentences. "
-            "Use only the reference information. Use simple English for translation. "
-            "Do not enumerate every reference item.\n"
-            if is_overview_question(english_prompt)
-            else "Answer rule: answer briefly using only relevant reference facts. Use simple English for translation.\n"
-        )
-        prompt_for_llm = (
-            answer_rule
-            +
-            "[Reference information to use for answering, do not repeat it]\n"
-            f"{context_blocks}"
-            f"[End of reference information]\n\n"
-            f"USER PROMPT: {english_prompt}"
-        )
-    else:
-        response_text = "I do not have that information in my university knowledge base."
-        for response_event in localized_response_events(response_text, language):
-            yield response_event
-        yield event(
-            "memory",
-            {
-                "english_prompt": english_prompt,
-                "english_response": response_text,
-            },
-        )
-        return
+            if route_context:
+                pass
+            elif context_blocks:
+                answer_rule = (
+                    "Answer rule: give a brief spoken overview in at most three sentences. "
+                    "Use only the reference information. Use simple English for translation. "
+                    "Do not enumerate every reference item.\n"
+                    if is_overview_question(english_prompt)
+                    else "Answer rule: answer briefly using only relevant reference facts. Use simple English for translation.\n"
+                )
+                prompt_for_llm = (
+                    answer_rule
+                    +
+                    "[Reference information to use for answering, do not repeat it]\n"
+                    f"{context_blocks}"
+                    f"[End of reference information]\n\n"
+                    f"USER PROMPT: {english_prompt}"
+                )
+            else:
+                response_text = "I do not have that information in my university knowledge base."
+                for response_event in localized_response_events(response_text, language):
+                    yield response_event
+                yield event(
+                    "memory",
+                    {
+                        "english_prompt": english_prompt,
+                        "english_response": response_text,
+                    },
+                )
+                return
 
-    response_text = ""
+            response_text = ""
 
-    for sentence in text_chunker(stream_completion(prompt_for_llm, language)):
-        response_text += sentence + " "
+            for sentence in text_chunker(stream_completion(prompt_for_llm, language)):
+                response_text += sentence + " "
 
-        for response_event in emit_answer(sentence, language):
-            yield response_event
+                for response_event in emit_answer(sentence, language):
+                    yield response_event
 
-    english_response = response_text.strip()
-    conversations[language].append({"role": "assistant", "content": english_response})
-    yield event(
-        "memory",
-        {
-            "english_prompt": english_prompt,
-            "english_response": english_response,
-        },
-    )
+            english_response = response_text.strip()
+            conversations[language].append({"role": "assistant", "content": english_response})
+            yield event(
+                "memory",
+                {
+                    "english_prompt": english_prompt,
+                    "english_response": english_response,
+                },
+            )
+    finally:
+        finalize_request()
 
 @app.route("/health")
 def health():

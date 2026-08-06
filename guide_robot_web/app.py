@@ -3,6 +3,7 @@ import threading
 from queue import Queue
 from flask import Flask, Response, jsonify, render_template, request
 from bridge import display_queue
+from latency_tracker import get_latency_logs, clear_latency_logs
 from memory_store import (
     add_manual_memory,
     clear_conversations,
@@ -117,6 +118,21 @@ def stream():
             yield chunk + "\n"
 
     return Response(generate(), mimetype="text/plain")
+
+@app.route("/api/admin/latency")
+def get_latency():
+    limit = request.args.get("limit", default=20, type=int)
+    return jsonify({"logs": get_latency_logs(limit)})
+
+@app.route("/api/admin/latency", methods=["POST"])
+def clear_latency():
+    clear_latency_logs()
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/latency", methods=["DELETE"])
+def delete_latency():
+    clear_latency_logs()
+    return jsonify({"ok": True})
 
 def run_guide_agent():
 
