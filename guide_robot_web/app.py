@@ -1,114 +1,43 @@
 import logging
 import threading
 from queue import Queue
+
 from flask import Flask, Response, jsonify, render_template, request
-from bridge import display_queue
-from latency_tracker import get_latency_logs, clear_latency_logs
-from memory_store import (
-    add_manual_memory,
-    clear_conversations,
-    populate_uni_info,
-    rebuild_conversation_embeddings,
-    remove_last_conversation,
-    status as memory_status,
-)
-from remote_agent_client import get_config, handle_prompt, preload_models, set_config
-from voice_input import capture as capture_voice, preload as preload_voice
+
+from bridge import reset_display, send_event, send_text
+from demo_interactions import INTERACTIONS, run_interaction
 
 app = Flask(__name__)
-prompt_queue = Queue()
-current_mode = {"language": "en"}
+interaction_queue = Queue()
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", interactions=INTERACTIONS)
 
 @app.route("/admin")
 def admin():
-    return render_template("admin.html")
+    return render_template("admin.html", interactions=INTERACTIONS)
 
-@app.route("/api/mode", methods=["GET", "POST"])
-def mode():
-    if request.method == "POST":
-        data = request.get_json(silent=True) or {}
-        language = data.get("language", "").lower()
-        if language not in {"en", "mm"}:
-            return jsonify({"error": "language must be en or mm"}), 400
+@app.route("/api/interactions")
+def interactions():
+    return jsonify({"interactions": INTERACTIONS})
 
-        current_mode["language"] = language
+@app.route("/api/interactions/<interaction_id>/play", methods=["POST"])
+def play_interaction(interaction_id):
+    interaction = next((item for item in INTERACTIONS if item["id"] == interaction_id), None)
+    if interaction is None:
+        return jsonify({"error": "unknown interaction"}), 404
 
-    return jsonify(current_mode)
-
-@app.route("/api/capture-voice", methods=["POST"])
-def submit_voice():
-    if current_mode["language"] != "en":
-        return jsonify({"error": "voice input is only available in English mode"}), 400
-
-    text = capture_voice(timeout=30)
-    if text:
-        prompt_queue.put({"language": "en", "prompt": text})
-    return jsonify({"text": text, "queued": bool(text)})
+    interaction_queue.put(interaction)
+    return jsonify({"queued": True, "interaction": interaction})
 
 @app.route("/api/prompt", methods=["POST"])
 def submit_prompt():
     data = request.get_json(silent=True) or {}
-    prompt = data.get("prompt", "").strip()
-    language = data.get("language", current_mode["language"]).lower()
-    if not prompt:
-        return jsonify({"error": "prompt is required"}), 400
-    if language not in {"en", "mm"}:
-        return jsonify({"error": "language must be en or mm"}), 400
-
-    prompt_queue.put({"language": language, "prompt": prompt})
-    return jsonify({"queued": True, "language": language})
-
-@app.route("/api/remote", methods=["GET", "POST"])
-def remote_config():
-    if request.method == "POST":
-        data = request.get_json(silent=True) or {}
-        set_config(url=data.get("url"), token=data.get("token"))
-
-    return jsonify(get_config())
-
-@app.route("/api/admin/db", methods=["GET", "POST"])
-def admin_db():
-    if request.method == "GET":
-        return jsonify(memory_status())
-
-    data = request.get_json(silent=True) or {}
-    command = data.get("command")
-
-    try:
-        if command == "populate_uni_info":
-            result = populate_uni_info()
-        elif command == "rebuild_conversations":
-            result = rebuild_conversation_embeddings()
-        elif command == "remove_last":
-            result = remove_last_conversation()
-        elif command == "clear_conversations":
-            result = clear_conversations()
-        elif command == "add_memory":
-            result = {"id": add_manual_memory(data.get("text", ""))}
-        else:
-            return jsonify({"error": "unknown command"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    result["status"] = memory_status()
-    return jsonify(result)
-
-@app.route("/api/admin/models/load", methods=["POST"])
-def load_models():
-    try:
-        result = preload_models()
-        try:
-            result["voice"] = preload_voice()
-        except Exception as e:
-            result["voice"] = {"ok": False, "error": str(e)}
-        result["ok"] = bool(result.get("ok")) and bool(result["voice"].get("ok"))
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    interaction_id = data.get("interactionId") or data.get("prompt")
+    if not interaction_id:
+        return jsonify({"error": "interactionId is required"}), 400
+    return play_interaction(str(interaction_id))
 
 @app.route("/stream")
 def stream():
@@ -117,39 +46,27 @@ def stream():
             chunk = display_queue.get()
             yield chunk + "\n"
 
+    from bridge import display_queue
+
     return Response(generate(), mimetype="text/plain")
 
-@app.route("/api/admin/latency")
-def get_latency():
-    limit = request.args.get("limit", default=20, type=int)
-    return jsonify({"logs": get_latency_logs(limit)})
-
-@app.route("/api/admin/latency", methods=["POST"])
-def clear_latency():
-    clear_latency_logs()
-    return jsonify({"ok": True})
-
-@app.route("/api/admin/latency", methods=["DELETE"])
-def delete_latency():
-    clear_latency_logs()
-    return jsonify({"ok": True})
-
-def run_guide_agent():
-
+def run_demo_worker():
     while True:
-        item = prompt_queue.get()
+        interaction = interaction_queue.get()
         try:
-            handle_prompt(item["prompt"], item["language"])
+            run_interaction(interaction)
         except Exception as exc:
-            print(f"Prompt worker error: {exc}")
+            reset_display()
+            send_text(f"Demo interaction error: {exc}")
+            send_event("done")
         finally:
-            prompt_queue.task_done()
+            interaction_queue.task_done()
 
 if __name__ == "__main__":
     log = logging.getLogger("werkzeug")
     log.setLevel(logging.ERROR)
 
-    threading.Thread(target=run_guide_agent, daemon=True).start()
+    threading.Thread(target=run_demo_worker, daemon=True).start()
 
-    print("Display Starting on Port 5000")
-    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True, use_reloader=False)
+    print("Guide Robot Demo Display Starting on Port 7070")
+    app.run(host="0.0.0.0", port=7070, debug=False, threaded=True, use_reloader=False)

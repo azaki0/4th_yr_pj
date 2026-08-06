@@ -11,8 +11,3 @@ def send_text(text):
 
 def reset_display():
     send_event("reset")
-
-def show_route(route_payload):
-    if isinstance(route_payload, str):
-        route_payload = json.loads(route_payload)
-    send_event("route", route_payload)
