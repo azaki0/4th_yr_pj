@@ -1,7 +1,7 @@
 import logging
 import threading
 from queue import Queue
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 from bridge import reset_display, send_event, send_text
 from demo_interactions import INTERACTIONS, run_interaction
 from motion_commands import MOTION_COMMANDS, send_motion_command
@@ -20,6 +20,10 @@ def admin():
 @app.route("/motion")
 def motion():
     return render_template("motion.html", motions=MOTION_COMMANDS)
+
+@app.route("/local-ai")
+def local_ai():
+    return render_template("local_ai.html")
 
 @app.route("/api/interactions")
 def interactions():
@@ -45,6 +49,18 @@ def play_interaction(interaction_id):
 
     interaction_queue.put(interaction)
     return jsonify({"queued": True, "interaction": interaction})
+
+@app.route("/api/local-ai/stream", methods=["POST"])
+def local_ai_stream():
+    data = request.get_json(silent=True) or {}
+    prompt = data.get("prompt", "").strip()
+    if not prompt:
+        return jsonify({"error": "prompt is required"}), 400
+
+    return Response(
+        stream_with_context(),
+        mimetype="text/plain",
+    )
 
 @app.route("/api/prompt", methods=["POST"])
 def submit_prompt():
