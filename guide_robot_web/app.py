@@ -57,8 +57,10 @@ def local_ai_stream():
     if not prompt:
         return jsonify({"error": "prompt is required"}), 400
 
+    from ai import run_local_ai_stream
+
     return Response(
-        stream_with_context(),
+        stream_with_context(run_local_ai_stream(prompt)),
         mimetype="text/plain",
     )
 
