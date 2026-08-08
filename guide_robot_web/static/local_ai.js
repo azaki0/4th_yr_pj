@@ -4,11 +4,70 @@ const output = document.getElementById('local-ai-output');
 const cursor = document.getElementById('local-ai-cursor');
 const state = document.getElementById('local-ai-state');
 const sendButton = document.querySelector('.local-ai-send-btn');
+const speakerToggle = document.getElementById('speaker-toggle');
 
 let charQueue = [];
 let typeInterval = null;
 let currentSpan = null;
+let currentAudio = null;
 const CHAR_DELAY_MS = 18;
+
+async function refreshSpeakerToggle() {
+    try {
+        const response = await fetch('/api/output-mode');
+        const data = await response.json();
+        speakerToggle.textContent = data.mode === 'phone' ? 'Speaker: Phone' : 'Speaker: Laptop';
+    } catch {
+        speakerToggle.textContent = 'Speaker: Laptop';
+    }
+}
+
+async function setSpeakerMode(mode) {
+    speakerToggle.textContent = mode === 'phone' ? 'Speaker: Phone' : 'Speaker: Laptop';
+    try {
+        await fetch('/api/output-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode }),
+        });
+    } catch {
+        // ignore
+    }
+}
+
+function b64ToWavBlob(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: 'audio/wav' });
+}
+
+function playStreamAudio(srcOrB64) {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    const audio = new Audio(typeof srcOrB64 === 'string' && srcOrB64.startsWith('/') ? srcOrB64 : URL.createObjectURL(b64ToWavBlob(srcOrB64)));
+    currentAudio = audio;
+    audio.play().catch(() => {});
+}
+
+function stopStreamAudio() {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+}
+
+if (speakerToggle) {
+    speakerToggle.addEventListener('click', () => {
+        const isPhone = speakerToggle.textContent.includes('Phone');
+        setSpeakerMode(isPhone ? 'laptop' : 'phone');
+    });
+    refreshSpeakerToggle();
+}
 
 function setBusy(isBusy) {
     state.textContent = isBusy ? 'Thinking' : 'Ready';
@@ -89,7 +148,11 @@ async function sendPrompt(prompt) {
                 if (event.type === 'reset') resetOutput();
                 if (event.type === 'text') enqueueText(event.data);
                 if (event.type === 'status') state.textContent = 'Speaking';
-                if (event.type === 'done') setBusy(false);
+                if (event.type === 'audio') playStreamAudio(event.data?.b64 || event.data?.src);
+                if (event.type === 'done') {
+                    stopStreamAudio();
+                    setBusy(false);
+                }
             }
         }
     } catch {

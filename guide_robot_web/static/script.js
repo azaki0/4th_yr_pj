@@ -3,13 +3,63 @@ const streamCursor = document.getElementById('stream-cursor');
 const demoState = document.getElementById('demo-state');
 const actionButtons = document.querySelectorAll('[data-interaction-id]');
 const streamContainer = document.querySelector('.stream-container');
+const speakerToggle = document.getElementById('speaker-toggle');
 
 let isNewResponse = true;
 let isResponding = false;
 let charQueue = [];
 let typeInterval = null;
 let currentSpan = null;
+let currentAudio = null;
 const CHAR_DELAY_MS = 18;
+
+async function refreshSpeakerToggle() {
+    try {
+        const response = await fetch('/api/output-mode');
+        const data = await response.json();
+        speakerToggle.textContent = data.mode === 'phone' ? 'Speaker: Phone' : 'Speaker: Laptop';
+    } catch {
+        speakerToggle.textContent = 'Speaker: Laptop';
+    }
+}
+
+async function setSpeakerMode(mode) {
+    speakerToggle.textContent = mode === 'phone' ? 'Speaker: Phone' : 'Speaker: Laptop';
+    try {
+        await fetch('/api/output-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode }),
+        });
+    } catch {
+        // ignore
+    }
+}
+
+function playStreamAudio(src) {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    const audio = new Audio(src);
+    currentAudio = audio;
+    audio.play().catch(() => {});
+}
+
+function stopStreamAudio() {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+}
+
+if (speakerToggle) {
+    speakerToggle.addEventListener('click', () => {
+        const isPhone = speakerToggle.textContent.includes('Phone');
+        setSpeakerMode(isPhone ? 'laptop' : 'phone');
+    });
+    refreshSpeakerToggle();
+}
 
 function setBusy(isBusy) {
     isResponding = isBusy;
@@ -135,6 +185,18 @@ async function listenToStream() {
                     continue;
                 }
 
+                if (event.type === 'audio') {
+                    if (event.data?.src) {
+                        playStreamAudio(event.data.src);
+                    }
+                    continue;
+                }
+
+                if (event.type === 'audio-stop') {
+                    stopStreamAudio();
+                    continue;
+                }
+
                 if (event.type === 'text') {
                     if (isNewResponse) {
                         output.innerHTML = '';
@@ -146,6 +208,7 @@ async function listenToStream() {
                 }
 
                 if (event.type === 'done') {
+                    stopStreamAudio();
                     setBusy(false);
                 }
             }

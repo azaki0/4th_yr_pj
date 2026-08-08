@@ -93,6 +93,16 @@ body {
     color: var(--accent);
 }
 
+.speaker-toggle {
+    cursor: pointer;
+    font-family: var(--font);
+}
+
+.speaker-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
 .robot-indicator {
     position: relative;
     width: 12px;

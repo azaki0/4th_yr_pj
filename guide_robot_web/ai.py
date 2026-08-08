@@ -1,14 +1,17 @@
+import base64
+import io
 import json
 import os
 import threading
 import time
 import warnings
+import wave
 from pathlib import Path
 import numpy as np
 import sounddevice as sd
 from llama_cpp import Llama
 from kokoro import KPipeline
-from bridge import reset_display, send_text
+from bridge import get_output_mode, reset_display, send_text
 from servo_controller import close_mouth, play_speech
 
 os.environ["HF_HUB_OFFLINE"] = "1"
@@ -51,12 +54,26 @@ def _synthesize(text):
         raise RuntimeError("Kokoro returned no audio")
     return np.array(wav, dtype=np.float32)
 
+def _audio_to_b64(audio):
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype(np.int16)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(SAMPLE_RATE)
+        wav_file.writeframes(pcm.tobytes())
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
 def _play_with_servo(audio):
     audio_list = audio.tolist()
-    sd.play(audio, samplerate=SAMPLE_RATE)
-    time.sleep(AUDIO_LEAD_MS / 1000)
-    play_speech(audio_list, SAMPLE_RATE)
-    sd.wait()
+    if get_output_mode() == "phone":
+        yield stream_event("audio", {"b64": _audio_to_b64(audio), "sampleRate": SAMPLE_RATE})
+        time.sleep(len(audio_list) / SAMPLE_RATE)
+    else:
+        sd.play(audio, samplerate=SAMPLE_RATE)
+        time.sleep(AUDIO_LEAD_MS / 1000)
+        play_speech(audio_list, SAMPLE_RATE)
+        sd.wait()
     close_mouth()
 
 def run_local_ai_stream(prompt, temperature=0.7):
@@ -96,14 +113,14 @@ def run_local_ai_stream(prompt, temperature=0.7):
                 sentence_buffer = ""
                 yield stream_event("status", "speaking")
                 try:
-                    _play_with_servo(_synthesize(sentence))
+                    yield from _play_with_servo(_synthesize(sentence))
                 except Exception as exc:
                     send_text(f"\n[tts error: {exc}]")
 
         if sentence_buffer.strip():
             yield stream_event("status", "speaking")
             try:
-                _play_with_servo(_synthesize(sentence_buffer.strip()))
+                yield from _play_with_servo(_synthesize(sentence_buffer.strip()))
             except Exception as exc:
                 send_text(f"\n[tts error: {exc}]")
 

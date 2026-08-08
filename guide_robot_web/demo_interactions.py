@@ -1,41 +1,45 @@
+import csv
 import time
 import wave
 import winsound
 from array import array
 from pathlib import Path
-from bridge import reset_display, send_event, send_text
+from bridge import get_output_mode, reset_display, send_event, send_text
 from servo_controller import close_mouth, play_speech
 
 AUDIO_DIR = Path(__file__).resolve().parent / "static" / "audio"
+TEXTS_CSV = Path(__file__).resolve().parent / "texts.csv"
 TEXT_CHUNK_DELAY_SECONDS = 0.18
 AUDIO_LEAD_MS = 200
 
-INTERACTIONS = [
-    {
-        "id": "welcome",
-        "label": "Welcome",
-        "text": "မဂ်လာပါ။ ကျွန်မကတော့ နေပြည်တော်နည်းပညာတက္ကသိုလ် Naypyitaw State Polytechnic University စက်မှုဌာနမှ ကျောင်းသားများမှ ဖန်တီးထားသော AI စက်ရုပ်တစ်ခုဖြစ်ပါတယ်။",
-        "audio": "welcome.wav",
-    },
-    {
-        "id": "overview",
-        "label": "NSPU Overview",
-        "text": "NayPyiTaw State Polytechnic တက္ကသိုလ်သည် ဇမ္ဗူသီရိ မြို့နယ်တွင် တည်ရှိသော နည်းပညာတက္ကသိုလ် တစ်ခု ဖြစ်ပါသည်။ ဤတက္ကသိုလ်တွင် မြို့ပြ၊ စက်မှု၊ အီလက်ထရွန်းနစ်၊ လျှပ်စစ်စွမ်းအား၊ ကွန်ပျူတာ အင်ဂျင်နီယာနှင့် ဗိသုကာ ဘာသာရပ်များကို သင်ကြားပေးလျက် ရှိပါသည်။",
-        "audio": "nspu_overview.wav",
-    },
-    {
-        "id": "help",
-        "label": "Demo",
-        "text": "အင်တာနက် ချိတ်ဆက်မှု မရရှိသည့်အတွက် ကျွန်မရဲ့ စွမ်းဆောင်နိုင်စွမ်း အစစ်အမှန်ကို မပြသနိုင်သော်လည်း ယခု Demo Version မှတစ်ဆင့် Screen ဖြင့်  Interactive ဖြစ်အောင် ပြုလုပ်ထားပါတယ်ရှင့်။",
-        "audio": "saying_demo.wav",
-    },
-    {
-        "id": "goodbye",
-        "label": "Goodbye",
-        "text": "အခုလို မိတ်ဆက်ခွင့်ရရှိသည့်အတွက်ကျေးဇူးတင်ပါတယ်ရှင်။ ဒီမှာတင်နှုတ်ဆက်လိုက်ပါတယ်ရှင်။",
-        "audio": "goodbye.wav",
-    },
-]
+def _load_texts():
+    texts = {}
+    if not TEXTS_CSV.exists():
+        return texts
+    with open(TEXTS_CSV, "r", encoding="utf-8-sig", newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            audio = (row.get("audio") or row.get("file") or row.get("filename") or "").strip()
+            text = (row.get("text") or row.get("transcript") or "").strip()
+            if audio:
+                texts[audio] = text
+    return texts
+
+def _discover_interactions():
+    texts = _load_texts()
+    interactions = []
+    for path in sorted(AUDIO_DIR.glob("*.wav")):
+        name = path.stem
+        interactions.append({
+            "id": name,
+            "label": name,
+            "text": texts.get(path.name, ""),
+            "audio": path.name,
+        })
+    return interactions
+
+def get_interactions():
+    return _discover_interactions()
 
 def _read_wav(path):
     with wave.open(str(path), "rb") as wav_file:
@@ -74,11 +78,18 @@ def _play_audio_file(filename):
     audio, sample_rate = _read_wav(path)
     duration_seconds = len(audio) / sample_rate if sample_rate else 0
 
-    winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+    if get_output_mode() == "phone":
+        send_event("audio", {"src": f"/static/audio/{filename}"})
+    else:
+        winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
+
     time.sleep(AUDIO_LEAD_MS / 1000)
     play_speech(audio, sample_rate)
     time.sleep(max(0, duration_seconds - (AUDIO_LEAD_MS / 1000)))
-    winsound.PlaySound(None, winsound.SND_PURGE)
+    if get_output_mode() == "phone":
+        send_event("audio-stop", None)
+    else:
+        winsound.PlaySound(None, winsound.SND_PURGE)
     close_mouth()
 
 def _stream_text(text):

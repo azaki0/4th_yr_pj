@@ -2,8 +2,8 @@ import logging
 import threading
 from queue import Queue
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
-from bridge import reset_display, send_event, send_text
-from demo_interactions import INTERACTIONS, run_interaction
+from bridge import get_output_mode, reset_display, send_event, send_text, set_output_mode
+from demo_interactions import get_interactions, run_interaction
 from motion_commands import MOTION_COMMANDS, send_motion_command
 
 app = Flask(__name__)
@@ -11,11 +11,11 @@ interaction_queue = Queue()
 
 @app.route("/")
 def index():
-    return render_template("index.html", interactions=INTERACTIONS)
+    return render_template("index.html", interactions=get_interactions())
 
 @app.route("/admin")
 def admin():
-    return render_template("admin.html", interactions=INTERACTIONS)
+    return render_template("admin.html", interactions=get_interactions())
 
 @app.route("/motion")
 def motion():
@@ -27,7 +27,7 @@ def local_ai():
 
 @app.route("/api/interactions")
 def interactions():
-    return jsonify({"interactions": INTERACTIONS})
+    return jsonify({"interactions": get_interactions()})
 
 @app.route("/api/motion")
 def motion_commands():
@@ -43,12 +43,22 @@ def send_motion(motion_id):
 
 @app.route("/api/interactions/<interaction_id>/play", methods=["POST"])
 def play_interaction(interaction_id):
-    interaction = next((item for item in INTERACTIONS if item["id"] == interaction_id), None)
+    interaction = next((item for item in get_interactions() if item["id"] == interaction_id), None)
     if interaction is None:
         return jsonify({"error": "unknown interaction"}), 404
 
     interaction_queue.put(interaction)
     return jsonify({"queued": True, "interaction": interaction})
+
+@app.route("/api/output-mode", methods=["GET", "POST"])
+def output_mode():
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        mode = data.get("mode")
+        if mode not in ("laptop", "phone"):
+            return jsonify({"error": "mode must be 'laptop' or 'phone'"}), 400
+        set_output_mode(mode)
+    return jsonify({"mode": get_output_mode()})
 
 @app.route("/api/local-ai/stream", methods=["POST"])
 def local_ai_stream():
