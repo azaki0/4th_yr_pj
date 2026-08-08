@@ -31,7 +31,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           # Crucial step: Tells GitHub to only host the subfolder contents
-          path: './guide_robot_web'
+          path: './guide_robot_web/templates'
 
       - name: Deploy to GitHub Pages
         id: deployment
