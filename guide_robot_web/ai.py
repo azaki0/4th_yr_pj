@@ -68,7 +68,7 @@ def _play_with_servo(audio):
     audio_list = audio.tolist()
     if get_output_mode() == "phone":
         yield stream_event("audio", {"b64": _audio_to_b64(audio), "sampleRate": SAMPLE_RATE})
-        time.sleep(len(audio_list) / SAMPLE_RATE)
+        time.sleep(len(audio_list) / SAMPLE_RATE + 1.2)
     else:
         sd.play(audio, samplerate=SAMPLE_RATE)
         time.sleep(AUDIO_LEAD_MS / 1000)

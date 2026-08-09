@@ -84,14 +84,19 @@ def submit_prompt():
 
 @app.route("/stream")
 def stream():
+    from bridge import subscribe, unsubscribe
+
+    queue = subscribe()
+
     def generate():
-        while True:
-            chunk = display_queue.get()
-            yield chunk + "\n"
+        try:
+            while True:
+                chunk = queue.get()
+                yield chunk + "\n"
+        finally:
+            unsubscribe(queue)
 
-    from bridge import display_queue
-
-    return Response(generate(), mimetype="text/plain")
+    return Response(stream_with_context(generate()), mimetype="text/plain")
 
 def run_demo_worker():
     while True:

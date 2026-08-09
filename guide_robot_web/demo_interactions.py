@@ -1,16 +1,18 @@
 import csv
 import time
 import wave
-import winsound
 from array import array
 from pathlib import Path
+import numpy as np
+import sounddevice as sd
 from bridge import get_output_mode, reset_display, send_event, send_text
 from servo_controller import close_mouth, play_speech
 
 AUDIO_DIR = Path(__file__).resolve().parent / "static" / "audio"
 TEXTS_CSV = Path(__file__).resolve().parent / "texts.csv"
-TEXT_CHUNK_DELAY_SECONDS = 0.18
+TEXT_CHUNK_DELAY_SECONDS = 0
 AUDIO_LEAD_MS = 200
+PHONE_START_BUFFER_SECONDS = 1.2
 
 def _load_texts():
     texts = {}
@@ -76,20 +78,19 @@ def _play_audio_file(filename):
         return
 
     audio, sample_rate = _read_wav(path)
+    audio_array = np.array(audio, dtype=np.float32)
     duration_seconds = len(audio) / sample_rate if sample_rate else 0
 
     if get_output_mode() == "phone":
         send_event("audio", {"src": f"/static/audio/{filename}"})
+        time.sleep(PHONE_START_BUFFER_SECONDS)
+        play_speech(audio, sample_rate)
+        time.sleep(max(0, duration_seconds + PHONE_START_BUFFER_SECONDS))
     else:
-        winsound.PlaySound(str(path), winsound.SND_FILENAME | winsound.SND_ASYNC)
-
-    time.sleep(AUDIO_LEAD_MS / 1000)
-    play_speech(audio, sample_rate)
-    time.sleep(max(0, duration_seconds - (AUDIO_LEAD_MS / 1000)))
-    if get_output_mode() == "phone":
-        send_event("audio-stop", None)
-    else:
-        winsound.PlaySound(None, winsound.SND_PURGE)
+        sd.play(audio_array, samplerate=sample_rate)
+        time.sleep(AUDIO_LEAD_MS / 1000)
+        play_speech(audio, sample_rate)
+        sd.wait()
     close_mouth()
 
 def _stream_text(text):
