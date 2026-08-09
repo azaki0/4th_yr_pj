@@ -11,3 +11,4 @@ project_process_records_up_to_2026-05-10.txt
 *.chroma_memory/
 *.pt
 /llama.cpp-omni/
+*.wav

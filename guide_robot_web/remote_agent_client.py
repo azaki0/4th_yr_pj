@@ -9,7 +9,6 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import numpy as np
 import sounddevice as sd
-from archived_codes.llm_memory_optimized import TTS_MODEL_PATH
 from bridge import reset_display, send_event, send_text, show_route
 from latency_tracker import TimerContext, record_first_response, set_request_info, finalize_request
 from memory_store import retrieve_context, store_conversation
