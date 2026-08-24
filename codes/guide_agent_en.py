@@ -17,7 +17,6 @@ from tqdm import tqdm
 from bridge import reset_display, send_text, show_route
 from navigation import route_to_place
 
-
 DB_PARAMS = {
     "dbname": "misaki_en",
     "user": "azaki",
@@ -67,10 +66,8 @@ system_prompt = (
 
 convo = [{"role": "system", "content": system_prompt}]
 
-
 def connect_db():
     return psycopg.connect(**DB_PARAMS)
-
 
 def fetch_conversations():
     conn = connect_db()
@@ -79,7 +76,6 @@ def fetch_conversations():
         rows = cursor.fetchall()
     conn.close()
     return rows
-
 
 def store_conversations(prompt, response):
     try:
@@ -94,14 +90,12 @@ def store_conversations(prompt, response):
     except Exception as exc:
         print(Fore.YELLOW + f"Could not store conversation memory: {exc}")
 
-
 def remove_last_conversation():
     conn = connect_db()
     with conn.cursor() as cursor:
         cursor.execute("DELETE FROM conversations WHERE id = (SELECT MAX(id) FROM conversations)")
         conn.commit()
     conn.close()
-
 
 def create_vector_db(conversations):
     name = "conversations"
@@ -118,7 +112,6 @@ def create_vector_db(conversations):
             embedding = text_embed.create_embedding(text)["data"][0]["embedding"]
         collection.add(ids=[str(c["id"])], embeddings=[embedding], documents=[text])
 
-
 def retrieve_embeddings(queries, n_results=2):
     results_set = set()
     collection = client.get_collection(name="conversations")
@@ -134,7 +127,6 @@ def retrieve_embeddings(queries, n_results=2):
                 results_set.add(doc)
 
     return results_set
-
 
 def create_queries(prompt):
     query_msg = (
@@ -163,7 +155,6 @@ def create_queries(prompt):
     except Exception:
         return [prompt]
 
-
 def recall(prompt):
     try:
         queries = create_queries(prompt)
@@ -176,7 +167,6 @@ def recall(prompt):
         )
     except Exception as exc:
         print(Fore.YELLOW + f"Recall unavailable: {exc}")
-
 
 def text_chunker(token_stream):
     buffer = ""
@@ -192,7 +182,6 @@ def text_chunker(token_stream):
     if buffer.strip():
         yield buffer.strip()
 
-
 def generate_tts(text_chunk, voice="af_heart", speed=1.0):
     generator = pipeline(text=text_chunk, voice=voice, speed=speed, split_pattern=r"\n+")
 
@@ -204,7 +193,6 @@ def generate_tts(text_chunk, voice="af_heart", speed=1.0):
         raise RuntimeError("Kokoro returned no audio")
 
     return np.array(wav, dtype=np.float32)
-
 
 def build_route_context(prompt):
     route = route_to_place(prompt)
@@ -222,7 +210,6 @@ def build_route_context(prompt):
         "Reply with exactly that sentence in natural English. "
         "Do not include labels like start=, destination=, distance=, or any internal node names."
     )
-
 
 def stream_and_tts(prompt, temperature=0.7):
     global convo
@@ -286,7 +273,6 @@ try:
 except Exception as exc:
     print(Fore.YELLOW + f"Memory database unavailable, continuing without recall: {exc}")
 
-
 def main():
     print("Guide Robot English Test Ready.")
 
@@ -317,7 +303,6 @@ def handle_prompt(prompt):
         stream_and_tts(prompt)
 
     return True
-
 
 if __name__ == "__main__":
     main()

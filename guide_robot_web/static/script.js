@@ -10,9 +10,306 @@ const routeNarration = document.getElementById('route-narration');
 const mapDistance = document.getElementById('map-distance');
 const mapTime = document.getElementById('map-time');
 const routeHeading = document.querySelector('.direction-panel h3');
+const streamCursor = document.getElementById('stream-cursor');
+const routeBackBtn = document.getElementById('route-back-btn');
+
+const micBtn = document.getElementById('mic-btn');
+const listeningOverlay = document.getElementById('listening-overlay');
+const transcriptPanel = document.getElementById('voice-transcript-panel');
+const transcriptList = document.getElementById('transcript-list');
+const modeButtons = document.querySelectorAll('.display-mode-button');
+const mmControlPanel = document.getElementById('mm-control-panel');
+const mmTextForm = document.getElementById('mm-text-form');
+const mmTextInput = document.getElementById('mm-text-input');
+const mmActionButtons = document.querySelectorAll('[data-mm-action]');
 
 let isNewResponse = true;
+let isResponding = false;
+let currentLanguage = 'en';
 
+let charQueue = [];
+let typeInterval = null;
+let currentSpan = null;
+let currentScrollEl = null;
+let currentTargetEl = null;
+const CHAR_DELAY_MS = 18;
+
+//Phone speaker toggle
+let phoneSpeakerEnabled = true;
+let phoneAudioCtx = null;
+
+function getPhoneAudioCtx() {
+    if (!phoneAudioCtx) {
+        const Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        phoneAudioCtx = new Ctor();
+    }
+    return phoneAudioCtx;
+}
+
+function base64ToArrayBuffer(base64) {
+    const binary = atob(base64);
+    const len = binary.length;
+    const buffer = new ArrayBuffer(len);
+    const view = new Uint8Array(buffer);
+    for (let i = 0; i < len; i++) {
+        view[i] = binary.charCodeAt(i);
+    }
+    return buffer;
+}
+
+async function playPhoneAudio(base64Data, sampleRate) {
+    if (!phoneSpeakerEnabled) return;
+    try {
+        const ctx = getPhoneAudioCtx();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') await ctx.resume();
+        const pcm16 = new Int16Array(base64ToArrayBuffer(base64Data));
+        const floatData = new Float32Array(pcm16.length);
+        for (let i = 0; i < pcm16.length; i++) {
+            floatData[i] = pcm16[i] / 32768;
+        }
+        const audioBuffer = ctx.createBuffer(1, floatData.length, sampleRate);
+        audioBuffer.getChannelData(0).set(floatData);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+    } catch (err) {
+        console.error('Phone audio error:', err);
+    }
+}
+
+//Voice state
+let isListening = false;
+
+//Mode check
+async function fetchMode() {
+    try {
+        const r = await fetch('/api/mode');
+        const data = await r.json();
+        currentLanguage = data.language || 'en';
+    } catch {}
+    updateMicVisibility();
+    renderMode();
+}
+
+function renderMode() {
+    modeButtons.forEach((button) => {
+        button.classList.toggle('active', button.dataset.mode === currentLanguage);
+    });
+    mmControlPanel.classList.toggle('hidden', currentLanguage !== 'mm' || isResponding);
+    routeBackBtn.classList.toggle('hidden', currentLanguage !== 'mm' || routeView.classList.contains('hidden'));
+}
+
+function updateMicVisibility() {
+    if (currentLanguage !== 'en' || isResponding) {
+        micBtn.classList.add('hidden');
+    } else {
+        micBtn.classList.remove('hidden');
+    }
+    if (mmControlPanel) {
+        mmControlPanel.classList.toggle('hidden', currentLanguage !== 'mm' || isResponding);
+    }
+}
+
+//Transcript
+function addTranscript(text) {
+    if (!routeView.classList.contains('hidden')) return;
+    transcriptPanel.classList.remove('hidden');
+    const entry = document.createElement('div');
+    entry.className = 'transcript-entry';
+    entry.textContent = text;
+    transcriptList.appendChild(entry);
+    transcriptList.scrollTop = transcriptList.scrollHeight;
+}
+
+//Push to talk
+micBtn.addEventListener('click', async () => {
+    if (isListening || isResponding) return;
+    isListening = true;
+    micBtn.classList.add('hidden');
+    listeningOverlay.classList.remove('hidden');
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 36000);
+        const r = await fetch('/api/capture-voice', {
+            method: 'POST',
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        const data = await r.json();
+        if (data.text) {
+            addTranscript(data.text);
+        }
+    } catch {}
+
+    listeningOverlay.classList.add('hidden');
+    isListening = false;
+    updateMicVisibility();
+});
+
+async function setMode(language) {
+    currentLanguage = language;
+    renderMode();
+    updateMicVisibility();
+
+    const response = await fetch('/api/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language }),
+    });
+
+    if (!response.ok) {
+        currentLanguage = language === 'en' ? 'mm' : 'en';
+        renderMode();
+        updateMicVisibility();
+    }
+}
+
+async function sendPrompt(prompt) {
+    const clean = prompt.trim();
+    if (!clean || isResponding) return;
+
+    isResponding = true;
+    updateMicVisibility();
+
+    try {
+        const response = await fetch('/api/prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: clean, language: currentLanguage }),
+        });
+
+        if (response.ok) return;
+    } catch {}
+
+    isResponding = false;
+    updateMicVisibility();
+}
+
+function showInteractiveHome() {
+    routeView.classList.add('hidden');
+    displayArea.classList.remove('hidden');
+    transcriptPanel.classList.remove('route-mode');
+    routeBackBtn.classList.add('hidden');
+    updateMicVisibility();
+}
+
+modeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        if (button.dataset.mode !== currentLanguage) {
+            setMode(button.dataset.mode);
+        }
+    });
+});
+
+mmTextForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendPrompt(mmTextInput.value);
+    mmTextInput.value = '';
+});
+
+mmActionButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+        const action = button.dataset.mmAction;
+        if (action === 'navigation') {
+            const destination = mmTextInput.value.trim();
+            if (!destination) {
+                mmTextInput.focus();
+                return;
+            }
+            sendPrompt(`${destination} ကို သွားချင်ပါတယ်။ လမ်းညွှန်ပေးပါ။`);
+            mmTextInput.value = '';
+        } else if (action === 'overview') {
+            sendPrompt('NSPU အကြောင်း အကျဉ်းချုပ် ပြောပြပါ။');
+        }
+    });
+});
+
+routeBackBtn.addEventListener('click', () => {
+    showInteractiveHome();
+});
+
+//Phone speaker toggle
+const phoneSpeakerBtn = document.getElementById('phone-speaker-btn');
+phoneSpeakerBtn.addEventListener('click', () => {
+    phoneSpeakerEnabled = !phoneSpeakerEnabled;
+    phoneSpeakerBtn.classList.toggle('active', phoneSpeakerEnabled);
+    if (phoneSpeakerEnabled) {
+        const ctx = getPhoneAudioCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume();
+    }
+});
+
+// --- Typing engine ---
+function startTyping() {
+    if (typeInterval) return;
+    typeInterval = setInterval(drainQueue, CHAR_DELAY_MS);
+}
+
+function drainQueue() {
+    if (charQueue.length === 0) {
+        clearInterval(typeInterval);
+        typeInterval = null;
+        if (streamCursor) streamCursor.classList.remove('active');
+        return;
+    }
+
+    const ch = charQueue.shift();
+
+    if (ch === '\n') {
+        currentSpan = null;
+    } else {
+        if (!currentSpan) {
+            currentSpan = document.createElement('span');
+            currentSpan.className = 'stream-line';
+            currentSpan._target = currentTargetEl || output;
+            currentSpan._target.appendChild(currentSpan);
+        }
+        currentSpan.textContent += ch;
+    }
+
+    if (currentScrollEl) {
+        currentScrollEl.scrollTop = currentScrollEl.scrollHeight;
+    }
+}
+
+function enqueueText(text, targetEl, scrollEl) {
+    if (currentSpan && currentSpan._target !== targetEl) {
+        currentSpan = null;
+    }
+
+    if (!currentSpan || currentSpan._target !== targetEl) {
+        currentSpan = document.createElement('span');
+        currentSpan.className = 'stream-line';
+        currentSpan._target = targetEl;
+        targetEl.appendChild(currentSpan);
+    }
+
+    currentScrollEl = scrollEl;
+    currentTargetEl = targetEl;
+
+    for (const ch of text) {
+        charQueue.push(ch);
+    }
+
+    if (streamCursor) streamCursor.classList.add('active');
+    startTyping();
+}
+
+function flushQueue() {
+    clearInterval(typeInterval);
+    typeInterval = null;
+    charQueue = [];
+    currentSpan = null;
+    currentScrollEl = null;
+    currentTargetEl = null;
+    if (streamCursor) streamCursor.classList.remove('active');
+}
+
+// --- Stream ---
 async function listenToStream() {
     try {
         const response = await fetch('/stream');
@@ -36,7 +333,7 @@ async function listenToStream() {
                 try {
                     event = JSON.parse(line);
                 } catch (e) {
-                    console.error("Stream parse error:", e, line);
+                    console.error('Stream parse error:', e, line);
                     continue;
                 }
 
@@ -47,80 +344,61 @@ async function listenToStream() {
 
                 if (event.type === 'reset') {
                     isNewResponse = true;
+                    isResponding = true;
+                    updateMicVisibility();
+                    flushQueue();
                     routeView.classList.add('hidden');
+                    routeBackBtn.classList.add('hidden');
                     displayArea.classList.remove('hidden');
+                    transcriptPanel.classList.remove('route-mode');
                     continue;
                 }
 
                 if (event.type === 'text') {
                     if (isNewResponse) {
                         output.innerHTML = '';
+                        currentSpan = null;
                         isNewResponse = false;
                     }
 
-                    if (routeView.classList.contains('hidden')) {
-                        appendText(event.data, output, displayArea);
-                    } else {
-                        appendText(event.data, routeNarration, document.querySelector('.direction-panel'));
-                    }
+                    const inRoute = !routeView.classList.contains('hidden');
+                    const targetEl = inRoute ? routeNarration : output;
+                    const scrollEl = inRoute
+                        ? document.querySelector('.direction-panel')
+                        : document.querySelector('.stream-container');
+
+                    enqueueText(event.data, targetEl, scrollEl);
+                }
+
+                if (event.type === 'audio') {
+                    playPhoneAudio(event.data.data, event.data.sampleRate || 24000);
+                    continue;
+                }
+
+                if (event.type === 'memory' || event.type === 'done') {
+                    isResponding = false;
+                    updateMicVisibility();
                 }
             }
         }
     } catch (error) {
-        console.log("Connection lost. Retrying.");
+        console.log('Connection lost. Retrying.');
         setTimeout(listenToStream, 2000);
     }
 }
 
-function appendText(text, targetEl = output, scrollEl = displayArea) {
-    let span = targetEl.lastElementChild;
-    if (!span || !span.classList.contains('stream-line')) {
-        span = document.createElement('span');
-        span.className = 'stream-line';
-        span.style.display = "block";
-        span.style.marginBottom = "15px";
-        targetEl.appendChild(span);
-    }
-
-    span.textContent += text;
-
-    if (scrollEl) {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-    }
-}
-
-function typeText(text, targetEl = output, scrollEl = displayArea) {
-    return new Promise((resolve) => {
-        let i = 0;
-        const span = document.createElement('span');
-        span.style.display = "block";
-        span.style.marginBottom = "15px";
-        targetEl.appendChild(span);
-
-        function type() {
-            if (i < text.length) {
-                span.innerHTML += text.charAt(i);
-                i++;
-
-                if (scrollEl) {
-                    scrollEl.scrollTop = scrollEl.scrollHeight;
-                }
-                setTimeout(type, 30);
-            } else {
-                resolve();
-            }
-        }
-        type();
-    });
-}
+let routeAnimTimer = null;
 
 function showRoute(data) {
     displayArea.classList.add('hidden');
     routeView.classList.remove('hidden');
+    transcriptPanel.classList.add('hidden');
+    routeBackBtn.textContent = currentLanguage === 'mm' ? 'နောက်သို့' : 'Back';
+    routeBackBtn.classList.toggle('hidden', currentLanguage !== 'mm');
 
     const isMyanmar = data.displayLanguage === 'mm';
     const startName = data.startNameLocalized || data.startName;
-    const destination = data.destinationNameLocalized || data.destinationName || (isMyanmar ? 'သွားမည့်နေရာ' : 'Destination');
+    const destination = data.destinationNameLocalized || data.destinationName || (isMyanmar ? 'သွားမည့်နေရာ' : 'Destination');
     const distance = data.distanceLocalized || data.distance || '--';
     const distanceUnit = data.distanceUnitLocalized || data.distanceUnit || (isMyanmar ? 'ပေ' : 'feet');
     const walkingTimeText = data.walkingTimeTextLocalized || data.walkingTimeText || '--';
@@ -132,12 +410,40 @@ function showRoute(data) {
     destinationName.innerText = destination;
     routeDistance.innerText = `${distance} ${distanceUnit}`;
     mapDistance.innerText = `${distance} ${distanceUnit}`;
-    mapTime.innerHTML = `${isMyanmar ? 'ခန့်မှန်းလမ်းလျှောက်ချိန်' : 'Estimated walking time'}:<br><span>${walkingTimeText}</span>`;
+    mapTime.innerHTML = `${isMyanmar ? 'ခန့်မှန်းလမ်းလျှောက်ချိန်' : 'Estimated walking time'}:<br><span>${walkingTimeText}</span>`;
 
     const points = data.points || [];
-    routeLine.setAttribute('points', points.map(point => `${point.x},${point.y}`).join(' '));
+    routeLine.setAttribute('points', points.map(p => `${p.x},${p.y}`).join(' '));
     routeMarkers.innerHTML = '';
     routeNarration.innerHTML = '';
+    currentSpan = null;
+    currentTargetEl = routeNarration;
+
+    animateRouteLine();
 }
 
+function animateRouteLine() {
+    clearTimeout(routeAnimTimer);
+    routeLine.classList.remove('drawing', 'flowing');
+    routeLine.style.strokeDasharray = '';
+    routeLine.style.strokeDashoffset = '';
+
+    const len = routeLine.getTotalLength();
+    routeLine.style.strokeDasharray = len;
+    routeLine.style.strokeDashoffset = len;
+
+    routeLine.getBoundingClientRect();
+
+    routeLine.classList.add('drawing');
+    routeLine.style.strokeDashoffset = '0';
+
+    routeAnimTimer = setTimeout(() => {
+        routeLine.classList.remove('drawing');
+        routeLine.style.strokeDasharray = '';
+        routeLine.style.strokeDashoffset = '';
+        routeLine.classList.add('flowing');
+    }, 1500);
+}
+
+fetchMode();
 listenToStream();

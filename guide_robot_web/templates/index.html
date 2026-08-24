@@ -9,16 +9,52 @@
 <body>
     <div class="app-wrapper">
         <main id="display-area">
-            <div id="stream-output">Guide Robot Online. Awaiting commands...</div>
+            <div class="display-header">
+                <div class="display-header-left">
+                    <div class="robot-indicator">
+                        <span class="pulse-ring"></span>
+                        <span class="pulse-dot"></span>
+                    </div>
+                    <span class="display-label">Guide Robot</span>
+                </div>
+                <div class="display-header-right">
+                    <div class="display-mode-control" role="group" aria-label="Language mode">
+                        <button class="display-mode-button active" type="button" data-mode="en">EN</button>
+                        <button class="display-mode-button" type="button" data-mode="mm">MM</button>
+                    </div>
+                    <button id="phone-speaker-btn" class="phone-speaker-btn active" type="button" aria-label="Toggle phone speaker" title="Phone speaker">SPK</button>
+                </div>
+            </div>
+
+            <div class="stream-container">
+                <div id="stream-output">Guide Robot Online. Awaiting commands...</div>
+                <span class="stream-cursor" id="stream-cursor"></span>
+            </div>
+
+            <div id="mm-control-panel" class="hidden">
+                <form id="mm-text-form" class="mm-text-form">
+                    <input id="mm-text-input" type="text" autocomplete="off" placeholder="မြန်မာလို မေးခွန်း သို့မဟုတ် သွားလိုသောနေရာ ရိုက်ပါ">
+                    <button type="submit">Send</button>
+                </form>
+                <div class="mm-action-grid">
+                    <button type="button" class="mm-action-btn" data-mm-action="navigation">Navigation</button>
+                    <button type="button" class="mm-action-btn" data-mm-action="overview">Brief Overview of NSPU</button>
+                    <button type="button" class="mm-action-btn mm-action-btn--placeholder" disabled>Placeholder</button>
+                    <button type="button" class="mm-action-btn mm-action-btn--placeholder" disabled>Placeholder</button>
+                </div>
+            </div>
         </main>
 
         <div id="route-view" class="hidden">
+            <button id="route-back-btn" class="route-back-btn hidden" type="button" aria-label="Back to prompt">
+                Back
+            </button>
             <section class="map-panel">
                 <div class="map-stage">
-                    <img id="floor-map" src="static/NSPU_campus_map_labeled.png" alt="Campus map">
+                    <img id="floor-map" src="static/maps/NSPU_campus_map_labeled.png" alt="Campus map">
                     <div id="map-route-stats">
                         <div class="distance-row">
-                            <img src="static/footstep.png" alt="">
+                            <img src="static/maps/footstep.png" alt="">
                             <span id="map-distance">-- ft</span>
                         </div>
                         <div id="map-time">--</div>
@@ -39,6 +75,28 @@
             </aside>
         </div>
     </div>
+
+    <div id="voice-ui">
+        <div id="voice-transcript-panel" class="hidden">
+            <div class="transcript-header">YOU SAID</div>
+            <div id="transcript-list"></div>
+        </div>
+
+        <div id="listening-overlay" class="hidden">
+            <div class="listening-ring"></div>
+            <div class="listening-label">Listening...</div>
+        </div>
+
+        <button id="mic-btn" class="mic-btn hidden" aria-label="Push to talk">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+        </button>
+    </div>
+
     <script src="static/script.js"></script>
 </body>
 </html>

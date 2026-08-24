@@ -1,5 +1,6 @@
 import heapq
 import re
+from difflib import SequenceMatcher
 
 WALKING_SPEED_FT_PER_SEC = 2
 
@@ -117,11 +118,10 @@ PLACES = {
     "view point": {"node": "view_point", "type": "facility", "aliases": ["viewpoint", "view place"]},
     "boys dormitory a": {"node": "boys_dormitory_A", "type": "dormitory", "aliases": ["boys dorm a", "male dormitory a"]},
     "boys dormitory b": {"node": "boys_dormitory_B", "type": "dormitory", "aliases": ["boys dorm b", "male dormitory b"]},
-    "canteen": {"node": "canteen", "type": "facility", "aliases": ["cafeteria", "food court", "dining hall", "restaurant"]},
+    "canteen": {"node": "canteen", "type": "facility", "aliases": ["cafeteria", "food court", "dining hall", "restaurant", "kenting", "cantean", "cantine", "canteen hall"]},
     "girls dormitory": {"node": "girls_dormitory", "type": "dormitory", "aliases": ["girls dorm", "female dormitory"]},
     "stadium": {"node": "stadium", "type": "facility", "aliases": ["sports ground", "football field"]},
 }
-
 
 def dijkstra(start_node):
     distances = {node: float("inf") for node in GRAPH}
@@ -144,7 +144,6 @@ def dijkstra(start_node):
 
     return distances, previous
 
-
 def reconstruct_path(previous, destination_node):
     path = []
     current = destination_node
@@ -154,7 +153,6 @@ def reconstruct_path(previous, destination_node):
         current = previous[current]
 
     return list(reversed(path))
-
 
 def determine_start_and_destination(sentence):
     pattern = r"(?:from\s+(.+?)\s+to\s+(.+?)|to\s+(.+?)\s+from\s+(.+?))(?:[?.!]|$)"
@@ -179,6 +177,42 @@ def determine_start_and_destination(sentence):
     
     return None, None
 
+def normalize_place_text(text):
+    text = text.lower().strip()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    text = re.sub(r"\b(the|a|an|please|show|tell|me|how|do|i|get|go|walk|route|direction|directions|path|way|to|from|current|location)\b", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+def place_names():
+    for place_name, place in PLACES.items():
+        yield place_name, place_name, place
+        for alias in place["aliases"]:
+            yield place_name, alias, place
+
+def fuzzy_place_match(text):
+    normalized = normalize_place_text(text)
+    if not normalized:
+        return None
+
+    best = None
+    for place_name, candidate, place in place_names():
+        candidate_norm = normalize_place_text(candidate)
+        if not candidate_norm:
+            continue
+
+        score = SequenceMatcher(None, normalized, candidate_norm).ratio()
+        if candidate_norm in normalized or normalized in candidate_norm:
+            score = max(score, 0.95)
+
+        for word in normalized.split():
+            score = max(score, SequenceMatcher(None, word, candidate_norm).ratio() * 0.92)
+
+        if best is None or score > best[0]:
+            best = (score, place_name, place)
+
+    if best and best[0] >= 0.72:
+        return best[1], best[2]
+    return None
 
 def find_place(query):
     normalized = query.lower().strip()
@@ -205,8 +239,20 @@ def find_place(query):
             if start_match and destination_match:
                 return [start_match, destination_match]
 
-    return None, None
+    start_text, destination_text = determine_start_and_destination(normalized)
+    if start_text and destination_text:
+        start_match = fuzzy_place_match(start_text)
+        destination_match = fuzzy_place_match(destination_text)
+        if start_match and destination_match:
+            return [start_match, destination_match]
+        if destination_match:
+            return destination_match
 
+    fuzzy_match = fuzzy_place_match(normalized)
+    if fuzzy_match:
+        return fuzzy_match
+
+    return None, None
 
 def route_to_place(query, start_node="entrance"):
     found_places = find_place(query)
@@ -245,7 +291,6 @@ def route_to_place(query, start_node="entrance"):
         "path": path,
         "points": [NODES[node] | {"id": node} for node in path],
     }
-
 
 def format_walking_time(seconds):
     if seconds < 60:

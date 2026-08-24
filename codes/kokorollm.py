@@ -4,14 +4,14 @@ import sounddevice as sd
 import warnings
 from llama_cpp import Llama
 from kokoro import KPipeline
-from silero import VoiceTranscriber
+from guide_robot_web.silero import VoiceTranscriber
 
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ['PYTHONUTF8'] = '1' #UTF8 py for emojis
 warnings.filterwarnings("ignore")
 
 #WHISPER_PATH = r"C:\Users\Kyouk\.cache\huggingface\hub\models--Systran--faster-whisper-small\snapshots\536b0662742c02347bc0e980a01041f333bce120"
-WHISPER_PATH = r"D:\models\models--Systran--faster-distil-whisper-small.en\snapshots\ef77d90526ccd62cde3808ee70626a01e5cf83e4"
+WHISPER_PATH = r"D:\models\whisper\models--Systran--faster-whisper-medium\snapshots\08e178d48790749d25932bbc082711ddcfdfbc4f"
 VAD_PATH = r"txt_files\silero_vad.jit"
 QWEN_MODEL_PATH = r"D:\models\qwen\qwen2.5-7b-instruct-q4_k_m.gguf"
 SAMPLE_RATE = 24000

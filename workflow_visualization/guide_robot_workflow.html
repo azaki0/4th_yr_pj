@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Guide Robot Workflow</title>
+  <link rel="stylesheet" href="workflow.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Guide Robot Pipeline</p>
+      <h1>Local Laptop + Kaggle + ESP32 Workflow</h1>
+    </div>
+    <div class="legend">
+      <span><i class="dot local"></i>Local</span>
+      <span><i class="dot remote"></i>Kaggle</span>
+      <span><i class="dot hardware"></i>Hardware</span>
+      <span><i class="dot guard"></i>Safety</span>
+    </div>
+  </header>
+
+  <main class="canvas">
+    <section class="lane lane-browser">
+      <div class="lane-title">Browser UI</div>
+      <article class="node local n1">
+        <span class="node-type">UI</span>
+        <h2>Home / Route View</h2>
+        <p>index.html renders the display, MM controls, mic button, and navigation map view.</p>
+        <code>templates/index.html</code>
+      </article>
+      <article class="node local n2">
+        <span class="node-type">State</span>
+        <h2>Mode + Controls</h2>
+        <p>script.js tracks EN/MM mode, hides controls during responses, and routes text to home or route narration.</p>
+        <code>static/script.js</code>
+      </article>
+      <article class="node local n3">
+        <span class="node-type">Stream</span>
+        <h2>Render Events</h2>
+        <p>Consumes JSON lines from /stream: reset, text, route, and done.</p>
+        <code>GET /stream</code>
+      </article>
+    </section>
+
+    <section class="lane lane-local">
+      <div class="lane-title">Local Flask + Orchestrator</div>
+      <article class="node local n4">
+        <span class="node-type">API</span>
+        <h2>Prompt Queue</h2>
+        <p>app.py receives /api/prompt, /api/mode, /api/capture-voice, and queues work for the guide agent thread.</p>
+        <code>guide_robot_web/app.py</code>
+      </article>
+      <article class="node local n5">
+        <span class="node-type">Bridge</span>
+        <h2>Display Queue</h2>
+        <p>bridge.py stores backend events in display_queue so Flask can stream them to the browser.</p>
+        <code>bridge.py</code>
+      </article>
+      <article class="node guard n6">
+        <span class="node-type">Route Guard</span>
+        <h2>Dijkstra First</h2>
+        <p>Navigation is matched locally before RAG. If a route exists, Dijkstra stays the source of truth.</p>
+        <code>navigation.py</code>
+      </article>
+      <article class="node local n7">
+        <span class="node-type">RAG</span>
+        <h2>Retrieve Context</h2>
+        <p>memory_store.py retrieves university chunks and conversation memory from Chroma using local embeddings.</p>
+        <code>memory_store.py</code>
+      </article>
+      <article class="node local n8">
+        <span class="node-type">Client</span>
+        <h2>Remote Agent Client</h2>
+        <p>Builds the Kaggle payload, forwards streamed events, stores memory, and runs local speech playback.</p>
+        <code>remote_agent_client.py</code>
+      </article>
+    </section>
+
+    <section class="lane lane-remote">
+      <div class="lane-title">Kaggle Model Server</div>
+      <article class="node remote n9">
+        <span class="node-type">Translate</span>
+        <h2>SeamlessM4T</h2>
+        <p>Keeps the old /translate contract while mapping mya_Mymr and eng_Latn to Seamless mya and eng.</p>
+        <code>/translate</code>
+      </article>
+      <article class="node remote n10">
+        <span class="node-type">LLM</span>
+        <h2>Qwen GGUF</h2>
+        <p>Streams concise answers through llama.cpp using route or RAG context supplied by the laptop.</p>
+        <code>/chat/stream</code>
+      </article>
+      <article class="node guard n11">
+        <span class="node-type">No Invention</span>
+        <h2>Route Safety</h2>
+        <p>If a route question cannot be matched, the server refuses invented directions and lists known places.</p>
+        <code>build_route_context()</code>
+      </article>
+    </section>
+
+    <section class="lane lane-output">
+      <div class="lane-title">Local Output + Hardware</div>
+      <article class="node local n12">
+        <span class="node-type">TTS</span>
+        <h2>Kokoro / gTTS</h2>
+        <p>English speech uses Kokoro. Myanmar speech uses local gTTS, decoded by torchaudio from MP3 bytes.</p>
+        <code>_local_tts()</code>
+      </article>
+      <article class="node local n13">
+        <span class="node-type">Audio</span>
+        <h2>Playback</h2>
+        <p>sounddevice plays the waveform while the same waveform drives lip-sync envelope generation.</p>
+        <code>sd.play()</code>
+      </article>
+      <article class="node hardware n14">
+        <span class="node-type">ESP32</span>
+        <h2>Mouth Envelope</h2>
+        <p>servo_controller.py posts mouth angle frames to the ESP32 /envelope endpoint.</p>
+        <code>src_dev_board/main.cpp</code>
+      </article>
+      <article class="node local n15">
+        <span class="node-type">Memory</span>
+        <h2>Store Conversation</h2>
+        <p>After the memory event, the English prompt and response are stored in PostgreSQL and Chroma.</p>
+        <code>store_conversation()</code>
+      </article>
+    </section>
+
+    <svg class="wires" viewBox="0 0 1500 930" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L0,6 L9,3 z"></path>
+        </marker>
+      </defs>
+      <path d="M210 208 C300 208, 300 208, 388 208"></path>
+      <path d="M210 378 C300 378, 300 378, 388 378"></path>
+      <path d="M210 546 C302 546, 302 694, 388 694"></path>
+      <path d="M565 208 C640 208, 640 208, 704 208"></path>
+      <path d="M565 378 C620 378, 620 310, 704 310"></path>
+      <path d="M565 546 C632 546, 632 446, 704 446"></path>
+      <path d="M565 694 C630 694, 630 580, 704 580"></path>
+      <path d="M882 208 C944 208, 944 208, 1018 208"></path>
+      <path d="M882 446 C946 446, 946 378, 1018 378"></path>
+      <path d="M882 580 C944 580, 944 546, 1018 546"></path>
+      <path d="M1198 208 C1260 208, 1260 208, 1326 208"></path>
+      <path d="M1198 378 C1260 378, 1260 378, 1326 378"></path>
+      <path d="M1198 546 C1260 546, 1260 546, 1326 546"></path>
+      <path d="M1198 690 C1260 690, 1260 690, 1326 690"></path>
+    </svg>
+  </main>
+
+  <section class="notes">
+    <div>
+      <h2>Primary Flow</h2>
+      <p>Prompt enters through the browser, app.py queues it, remote_agent_client.py translates MM prompts if needed, checks local Dijkstra routing, retrieves RAG context, then streams a Kaggle LLM response back as display and speech events.</p>
+    </div>
+    <div>
+      <h2>Key Rule</h2>
+      <p>Navigation facts come from navigation.py, not the LLM. The LLM only verbalizes route facts already produced by the local route system.</p>
+    </div>
+    <div>
+      <h2>Local Hardware Timing</h2>
+      <p>Audio playback, gTTS/Kokoro generation, and ESP32 mouth envelopes all happen on the laptop side so speech and lip-sync stay aligned.</p>
+    </div>
+  </section>
+</body>
+</html>

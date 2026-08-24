@@ -7,6 +7,8 @@
               "The university comprises 16 academic departments, including seven engineering majors, four computer majors, and five supporting departments. It offers seven engineering degrees and two computer science degrees, admitting 270 engineering students and 120 computer science students annually. The programs are designed to integrate theoretical knowledge with practical applications, preparing students for real-world challenges."],
   "motto": "INNOVATION WITH INTEGRITY",
   "departments": [
+    "Myanmar",
+    "English",
     "Mechanical Engineering",
     "Electrical Engineering",
     "Civil Engineering",
@@ -63,5 +65,80 @@
             "position": "Lab Technician",
             "degree": "ITC(Tigming)"
         }} 
+    },
+
+    "Architecture": {
+        "members":{
+            "Daw Zin Zin Moe":{
+                "position": "Professor and Head"
+            },
+            "Daw Khaing Thazin Oo":{
+                "position": "unknown"
+            },
+            "U Kyaw Zayar Myint":{
+                "position": "unknown"
+            }
+        }
+    },
+
+    "Elecrtical_Power_Engineering": {
+        "members":{
+            "Daw Phoo Ngone San":{
+                "position":"Professor and Head"
+            },
+            "Daw Kay Khaing Zaw":{
+                "position":"Associate Professor"
+            },
+            "Daw Aye Myo Thant":{
+                "position":"Associate Professor"
+            },
+            "Daw Than Than Win":{
+                "position":"Associate Professor"
+            },
+            "Daw Ei Mon Theint":{
+                "position":"Lecturer"
+            },
+            "Daw Khaing Chan Myae Win":{
+                "position":"Lecturer"
+            },
+            "Daw Chit Su Nge Htun":{
+                "position":"Tutor"
+            },
+            "Daw Phyu Sin Thein Htike":{
+                "position": "Tutor"
+            },
+            "Daw Thazin Aung":{
+                "position":"Tutor"
+            },
+            "Daw Zin Mar Win":{
+                "position":"Tutor"
+            },
+            "U Aung Kyaw Khaing":{
+                "position":"Tutor"
+            },
+            "Daw Khin Sandi Zaw":{
+                "position":"Tutor"
+            },
+            "U Myo Min Soe":{
+                "position":"Tutor"
+            },
+            "U Min Thant Zin":{
+                "position":"Tutor"
+            },
+            "Daw May Ma Ma Moe":{
+                "position":"Tutor"
+            }
+        }
+    },
+
+    "Myanmar_Department": {
+        "members":{
+            "Daw Khin Chaw Su":{
+                "position":"Professor and Head"
+            },
+            "Daw Lae Lae Nwal":{
+                "position":"Associate Professor"
+            }
+        }
     }
   }
