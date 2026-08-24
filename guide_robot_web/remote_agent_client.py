@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 import numpy as np
 import sounddevice as sd
 from bridge import reset_display, send_event, send_text, show_route
+from hand_controller import start_hand, stop_hand
 from latency_tracker import TimerContext, record_first_response, set_request_info, finalize_request
 from memory_store import retrieve_context, store_conversation
 from navigation import route_to_place
@@ -216,11 +217,13 @@ def _play_local_speech(text, language):
         _stream_audio_to_web(audio, sample_rate)
 
     with TimerContext("audio_playback"):
+        start_hand()
         sd.play(audio, samplerate=sample_rate)
         time.sleep(AUDIO_LEAD_MS / 1000)
         with TimerContext("play_speech_servo"):
             play_speech(audio, sample_rate)
         sd.wait()
+        stop_hand()
         with TimerContext("close_mouth"):
             close_mouth()
 
@@ -236,11 +239,13 @@ def _play_audio(event):
         audio_bytes = base64.b64decode(audio_b64)
         audio = np.frombuffer(audio_bytes, dtype=np.dtype(dtype))
 
+        start_hand()
         sd.play(audio, samplerate=sample_rate)
         time.sleep(AUDIO_LEAD_MS / 1000)
         with TimerContext("play_speech_servo"):
             play_speech(audio, sample_rate)
         sd.wait()
+        stop_hand()
         with TimerContext("close_mouth"):
             close_mouth()
 
