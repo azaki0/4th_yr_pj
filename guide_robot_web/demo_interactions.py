@@ -7,6 +7,7 @@ import numpy as np
 import sounddevice as sd
 from bridge import get_output_mode, reset_display, send_event, send_text
 from servo_controller import close_mouth, play_speech
+from hand_controller import start_hand, stop_hand
 
 AUDIO_DIR = Path(__file__).resolve().parent / "static" / "audio"
 TEXTS_CSV = Path(__file__).resolve().parent / "texts.csv"
@@ -87,10 +88,12 @@ def _play_audio_file(filename):
         play_speech(audio, sample_rate)
         time.sleep(max(0, duration_seconds + PHONE_START_BUFFER_SECONDS))
     else:
+        start_hand()
         sd.play(audio_array, samplerate=sample_rate)
         time.sleep(AUDIO_LEAD_MS / 1000)
         play_speech(audio, sample_rate)
         sd.wait()
+        stop_hand()
     close_mouth()
 
 def _stream_text(text):
