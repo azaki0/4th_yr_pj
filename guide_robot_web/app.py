@@ -117,4 +117,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_demo_worker, daemon=True).start()
 
     print("Guide Robot Demo Display Starting on Port 7070")
-    app.run(host="0.0.0.0", port=7070, debug=False, threaded=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=5460, debug=False, threaded=True, use_reloader=False)
